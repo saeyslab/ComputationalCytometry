@@ -1,0 +1,139 @@
+---
+title: "ComputationalCytometry"
+author: "Katrien Quintelier"
+date: "5/10/2022"
+output: html_document
+editor_options: 
+  chunk_output_type: inline
+---
+
+# Install and load the libraries
+## Install the libraries
+```{r}
+if (!requireNamespace("BiocManager", quietly = TRUE))
+  install.packages("BiocManager")
+BiocManager::install("flowCore")
+BiocManager::install("ggplot2")
+BiocManager::install("ggpubr")
+BiocManager::install("pheatmap")
+BiocManager::install("tidyr")
+BiocManager::install("FlowSOM")
+BiocManager::install("PeacoQC")
+```
+
+## Load the libraries
+```{r}
+library("flowCore") # For basic cytometry operations
+library("ggplot2") # For nice plots
+library("ggpubr")
+library("pheatmap") # For pretty heatmap plots
+library("tidyr")
+library("FlowSOM") # For FlowSOM clustering and functions
+library("PeacoQC") # For quality control
+```
+
+
+# Data exploration
+## Overview
+Identify the fcs files of interest on the system
+```{r}
+getwd() # What is the current working directory?
+# setwd() # To set the correct working directory
+
+dir <- "Data/Raw" # Point to directory where the data is located
+files <- list.files(dir, pattern = ".fcs")
+files
+```
+    
+Load an fcs file into a flowFrame
+```{r}
+ff <- read.FCS(file.path(dir, files[1]))
+ff
+```
+
+Check the expression matrix stored in the flowframe
+```{r}
+head(ff@exprs)
+```
+
+Check the metadata stored in the flowframe
+```{r}
+head(ff@description)
+```
+
+Check the channels and markers in the flowframe
+```{r}
+pData(ff@parameters)
+```
+
+Plot two markers against each other in the traditional dot plot
+```{r}
+plotDens(obj = ff, 
+         channels = GetChannels(ff, c("CD3", "CD19"), exact = FALSE))
+```
+
+Compensate the data with the spillover matrix acquired at the machine and transform with the logicle transformation
+```{r}
+comp <- ff@description$SPILL
+comp
+```
+
+```{r}
+ff_c <- compensate(ff, comp)
+ff_t <- transform(ff_c, estimateLogicle(ff_c, colnames(ff_c)[7:19]))
+
+plotDens(ff_t, GetChannels(object = ff, 
+                           markers = c("CD3", "CD19"), exact = FALSE))
+```
+
+
+## Exercises
+How many events are measured in Tube 30?
+```{r}
+```
+
+Plot CD64 against FcERI for Tube 30
+```{r}
+```
+
+
+# Organization
+## File organization
+File organization should be:
+  ComputationalCytometry (main folder)
+    - Data
+      + Raw
+        ~ 21-10-15_Tube_011_Live.fcs
+        ~ 21-10-15_Tube_012_Live.fcs
+        ~ 21-10-15_Tube_013_Live.fcs
+        ~ 21-10-15_Tube_028_Live.fcs
+        ~ 21-10-15_Tube_030_Live.fcs
+        ~ 21-10-15_Tube_031_Live.fcs
+        ~ 21-10-15_Tube_032_Live.fcs
+    - ComputationalCytometry.Rmd
+
+## Directories
+```{r}
+# Set directories
+dir_prepr <- "Data/Preprocessed/" #where the preprocessed data will be stored
+dir_QC <- "Data/Preprocessed/QC/" #where the data QC results will be stored
+dir_RDS <- "RDS/" #where the R objects will be stored
+dir_results <- "Results/" #where the results will be stored
+dir_raw <- "Data/Raw/" #where the raw data is located
+
+# Create directories
+for (path in c(dir_prepr, dir_QC, dir_RDS, dir_results)){
+  dir.create(path)
+}
+```
+
+## Set some variables
+```{r}
+# List markers of interest
+markers_of_interest <- c("SSC-A", "MHCII", "CD49b", "CD11b", "CD64",
+                         "FcERI", "CD161", "Ly-6G", "CD3", "CD19", "CD11c")
+channels_of_interest <- GetChannels(object = reference_file,
+                                    markers = markers_of_interest, 
+                                    exact = FALSE)
+
+```
