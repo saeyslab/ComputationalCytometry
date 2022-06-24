@@ -19,6 +19,7 @@ BiocManager::install("pheatmap")
 BiocManager::install("tidyr")
 BiocManager::install("FlowSOM")
 BiocManager::install("PeacoQC")
+devtools::install_github("LKremer/ggpointdensity")
 ```
 
 ## Load the libraries
@@ -30,87 +31,27 @@ library("pheatmap") # For pretty heatmap plots
 library("tidyr")
 library("FlowSOM") # For FlowSOM clustering and functions
 library("PeacoQC") # For quality control
-```
+library("ggpointdensity") # For nice density plots
 
-
-# Data exploration
-## Overview
-Identify the fcs files of interest on the system
-```{r}
-getwd() # What is the current working directory?
-# setwd() # To set the correct working directory
-
-dir <- "Data/Raw" # Point to directory where the data is located
-files <- list.files(dir, pattern = ".fcs")
-files
-```
-    
-Load an fcs file into a flowFrame
-```{r}
-ff <- read.FCS(file.path(dir, files[1]))
-ff
-```
-
-Check the expression matrix stored in the flowframe
-```{r}
-head(ff@exprs)
-```
-
-Check the metadata stored in the flowframe
-```{r}
-head(ff@description)
-```
-
-Check the channels and markers in the flowframe
-```{r}
-pData(ff@parameters)
-```
-
-Plot two markers against each other in the traditional dot plot
-```{r}
-plotDens(obj = ff, 
-         channels = GetChannels(ff, c("CD3", "CD19"), exact = FALSE))
-```
-
-Compensate the data with the spillover matrix acquired at the machine and transform with the logicle transformation
-```{r}
-comp <- ff@description$SPILL
-comp
-```
-
-```{r}
-ff_c <- compensate(ff, comp)
-ff_t <- transform(ff_c, estimateLogicle(ff_c, colnames(ff_c)[7:19]))
-
-plotDens(ff_t, GetChannels(object = ff, 
-                           markers = c("CD3", "CD19"), exact = FALSE))
-```
-
-
-## Exercises
-How many events are measured in Tube 30?
-```{r}
-```
-
-Plot CD64 against FcERI for Tube 30
-```{r}
+source("Extra_functions.R") # To load in additional functions
 ```
 
 
 # Organization
 ## File organization
 File organization should be:
-  ComputationalCytometry (main folder)
-    - Data
-      + Raw
-        ~ 21-10-15_Tube_011_Live.fcs
-        ~ 21-10-15_Tube_012_Live.fcs
-        ~ 21-10-15_Tube_013_Live.fcs
-        ~ 21-10-15_Tube_028_Live.fcs
-        ~ 21-10-15_Tube_030_Live.fcs
-        ~ 21-10-15_Tube_031_Live.fcs
-        ~ 21-10-15_Tube_032_Live.fcs
-    - ComputationalCytometry.Rmd
+ComputationalCytometry (main folder)
+- Data
++ Raw
+~ 21-10-15_Tube_011_Live.fcs
+~ 21-10-15_Tube_012_Live.fcs
+~ 21-10-15_Tube_013_Live.fcs
+~ 21-10-15_Tube_028_Live.fcs
+~ 21-10-15_Tube_030_Live.fcs
+~ 21-10-15_Tube_031_Live.fcs
+~ 21-10-15_Tube_032_Live.fcs
+- ComputationalCytometry.Rmd
+- Extra_functions.R
 
 ## Directories
 ```{r}
@@ -132,8 +73,165 @@ for (path in c(dir_prepr, dir_QC, dir_RDS, dir_results)){
 # List markers of interest
 markers_of_interest <- c("SSC-A", "MHCII", "CD49b", "CD11b", "CD64",
                          "FcERI", "CD161", "Ly-6G", "CD3", "CD19", "CD11c")
-channels_of_interest <- GetChannels(object = reference_file,
+channels_of_interest <- GetChannels(object = ff,
                                     markers = markers_of_interest, 
                                     exact = FALSE)
 
 ```
+
+# Data exploration
+## Overview
+Identify the fcs files of interest on the system
+```{r}
+getwd() # What is the current working directory?
+# setwd() # To set the correct working directory
+
+dir <- "Data/Raw" # Point to directory where the data is located
+files <- list.files(dir, pattern = ".fcs", full.names = TRUE)
+files
+```
+
+Load an fcs file into a flowFrame
+```{r}
+ff <- read.FCS(file.path(dir, files[1]))
+ff
+```
+
+Check the expression matrix stored in the flowframe
+```{r}
+head(ff@exprs)
+```
+
+Check the metadata stored in the flowframe
+```{r}
+head(ff@description)
+```
+
+Check the channels and markers in the flowframe
+```{r}
+pData(ff@parameters)
+```
+
+##Exercise
+How many events are measured in Tube 30?
+```{r}
+```
+
+#Preprocessing
+
+Plot two markers against each other in the traditional dot plot
+```{r}
+plotDens(ff = ff, 
+         markers = c("CD3", "CD19"),
+         adjust = 200)
+```
+
+Remove margins events
+```{r}
+ff_margins <- PeacoQC::RemoveMargins(ff, channels = channels_of_interest)
+```
+
+Plot Density
+```{r}
+plotDens(ff = ff_margins, 
+         markers = c("CD3", "CD19"),
+         adjust = 200)
+```
+
+
+Compensate the data with the spillover matrix acquired at the machine
+```{r}
+comp <- ff@description$SPILL
+comp
+ff_c <- compensate(ff_margins, comp)
+```
+
+
+```{r}
+plotDens(ff = ff_c, 
+         markers = c("CD3", "CD19"),
+         adjust = 200)
+```
+
+
+Transform the data using an estimateLogicle on all files
+```{r}
+
+transformList <- estimateTransformation(files, channels_of_interest)
+
+ff_t <- transform(ff_c, transformList)
+
+plotDens(ff = ff_t, markers = c("CD3", "CD19"), adjust = 1)
+```
+
+Quality control
+
+```{r}
+ff_QC <- PeacoQC::PeacoQC(ff = ff_t, 
+                          channels = channels_of_interest,
+                          output_directory = dir_QC)
+
+plotDens(ff = ff_t, markers = c("Time", "CD19"), adjust = 1)
+```
+
+Data filtering (can include removal of debris, doublets, dead cells, etc.)
+```{r}
+
+ff_doublets <- PeacoQC::RemoveDoublets(ff_QC$FinalFF)
+plotDens(ff = ff_t, markers = c("Time", "CD19"), adjust = 1)
+
+
+# Remove dead cells
+live_gate <- flowCore::polygonGate(filterId = "Live", 
+                                   .gate = matrix(data = c(60000, 100000, 150000, 250000, 
+                                                           250000, 60000, 60000, 1.6, 1.9, 
+                                                           2.5, 2.5, -0.3, -0.3, 1.6), 
+                                                  ncol = 2, 
+                                                  dimnames = list(c(), c("FSC-A", "APC-Cy7-A"))))
+selected_live <- filter(ff_doublets, live_gate) 
+ff_l <- ff_doublets[selected_live@subSet,]
+plotDens(ff = ff_t, markers = c("Time", "CD19"), adjust = 1)
+
+```
+
+## Preprocessing all files
+```{r}
+
+# p1, p2 ,... maken --> welke cellen verwijderd zijn
+
+for (file in files){
+  
+  ff <- read.FCS(file)
+  ff_margins <- PeacoQC::RemoveMargins(ff, channels = channels_of_interest)
+  comp <- ff@description$SPILL
+  
+  ff_c <- compensate(ff_margins, comp)
+  ff_t <- transform(ff_c, transformList)
+  ff_QC <- PeacoQC::PeacoQC(ff = ff_t, channels = channels_of_interest, output_directory = dir_QC)
+  ff_doublets <- PeacoQC::RemoveDoublets(ff_QC$FinalFF)
+  selected_live <- filter(ff_doublets, live_gate) 
+  ff_l <- ff_doublets[selected_live@subSet,]
+  
+  write.FCS(ff_l, file.path(dir_prepr, file))
+  
+}
+
+
+
+```
+
+
+## Exercise
+
+Plot CD64 against FcERI for Tube 30
+```{r}
+```
+
+
+#Normalisation
+
+#FlowSOm + analyse
+
+
+
+
