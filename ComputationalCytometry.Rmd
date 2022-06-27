@@ -68,17 +68,6 @@ for (path in c(dir_prepr, dir_QC, dir_RDS, dir_results)){
 }
 ```
 
-## Set some variables
-```{r}
-# List markers of interest
-markers_of_interest <- c("SSC-A", "MHCII", "CD49b", "CD11b", "CD64",
-                         "FcERI", "CD161", "Ly-6G", "CD3", "CD19", "CD11c")
-channels_of_interest <- GetChannels(object = ff,
-                                    markers = markers_of_interest, 
-                                    exact = FALSE)
-
-```
-
 # Data exploration
 ## Overview
 Identify the fcs files of interest on the system
@@ -93,7 +82,7 @@ files
 
 Load an fcs file into a flowFrame
 ```{r}
-ff <- read.FCS(file.path(dir, files[1]))
+ff <- read.FCS(files[1])
 ff
 ```
 
@@ -119,6 +108,18 @@ How many events are measured in Tube 30?
 
 #Preprocessing
 
+## Set some variables
+```{r}
+# List markers of interest
+markers_of_interest <- c("SSC-A", "MHCII", "CD49b", "CD11b", "CD64",
+                         "FcERI", "CD161", "Ly-6G", "CD3", "CD19", "CD11c")
+channels_of_interest <- GetChannels(object = ff,
+                                    markers = markers_of_interest, 
+                                    exact = FALSE)
+
+```
+
+
 Plot two markers against each other in the traditional dot plot
 ```{r}
 plotDens(ff = ff, 
@@ -134,6 +135,7 @@ ff_margins <- PeacoQC::RemoveMargins(ff, channels = channels_of_interest)
 Plot Density
 ```{r}
 plotDens(ff = ff_margins, 
+         original_ff = ff,
          markers = c("CD3", "CD19"),
          adjust = 200)
 ```
@@ -171,14 +173,14 @@ ff_QC <- PeacoQC::PeacoQC(ff = ff_t,
                           channels = channels_of_interest,
                           output_directory = dir_QC)
 
-plotDens(ff = ff_t, markers = c("Time", "CD19"), adjust = 1)
+plotDens(ff = ff_QC$FinalFF, original_ff = ff_t,markers = c("Time", "CD19"), adjust = 1)
 ```
 
 Data filtering (can include removal of debris, doublets, dead cells, etc.)
 ```{r}
 
 ff_doublets <- PeacoQC::RemoveDoublets(ff_QC$FinalFF)
-plotDens(ff = ff_t, markers = c("Time", "CD19"), adjust = 1)
+plotDens(ff = ff_doublets, original_ff = ff_t, markers = c("FSC-A", "FSC-H"), adjust = 1)
 
 
 # Remove dead cells
@@ -190,7 +192,7 @@ live_gate <- flowCore::polygonGate(filterId = "Live",
                                                   dimnames = list(c(), c("FSC-A", "APC-Cy7-A"))))
 selected_live <- filter(ff_doublets, live_gate) 
 ff_l <- ff_doublets[selected_live@subSet,]
-plotDens(ff = ff_t, markers = c("Time", "CD19"), adjust = 1)
+plotDens(ff = ff_l, original_ff = ff_doublets, markers = c("CD3", "CD19"), adjust = 1)
 
 ```
 
@@ -200,6 +202,8 @@ plotDens(ff = ff_t, markers = c("Time", "CD19"), adjust = 1)
 # p1, p2 ,... maken --> welke cellen verwijderd zijn
 
 for (file in files){
+  
+  print(file)
   
   ff <- read.FCS(file)
   ff_margins <- PeacoQC::RemoveMargins(ff, channels = channels_of_interest)
@@ -212,7 +216,7 @@ for (file in files){
   selected_live <- filter(ff_doublets, live_gate) 
   ff_l <- ff_doublets[selected_live@subSet,]
   
-  write.FCS(ff_l, file.path(dir_prepr, file))
+  write.FCS(ff_l, file.path(dir_prepr, basename(file)))
   
 }
 
