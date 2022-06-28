@@ -38,7 +38,9 @@ plotDens <- function (ff, original_ff = NULL, markers, adjust = 1)
     ggplot2::scale_color_gradientn(colours =
                                      colors) +
     theme_minimal() +
-    theme(legend.position = "none")
+    theme(legend.position = "none") +
+    xlab(markers[1]) +
+    ylab(markers[2])
 
   if(!is.null(original_ff)){
     p <- p + geom_point(data = df[removed_meas,], color = "black")

@@ -136,7 +136,7 @@ Plot Density
 ```{r}
 plotDens(ff = ff_margins, 
          original_ff = ff,
-         markers = c("CD3", "CD19"),
+         markers = c("FSC-A", "SSC-A"),
          adjust = 200)
 ```
 
@@ -159,7 +159,25 @@ plotDens(ff = ff_c,
 Transform the data using an estimateLogicle on all files
 ```{r}
 
-transformList <- estimateTransformation(files, channels_of_interest)
+# Add Live Death channel to transform data and remove SSC from channels of interest
+# since it needs its own transformation
+channels_to_transform <- c(channels_of_interest[-1], GetChannels(ff, "L/D", exact = FALSE))
+
+transformList <- estimateTransformation(files, channels_to_transform)
+
+ff_t <- transform(ff_c, transformList)
+
+#Special step to transform SSC-A
+reference_marker <- "PE-A"
+q5_goal <- quantile(exprs(ff_t)[,reference_marker], 0.05)
+q95_goal <- quantile(exprs(ff_t)[,reference_marker], 0.95)
+q5_SSCA <- quantile(exprs(ff_t)[,"SSC-A"], 0.05)
+q95_SSCA <- quantile(exprs(ff_t)[,"SSC-A"], 0.95)
+SSCA_a <- (q95_goal - q5_goal) / (q95_SSCA - q5_SSCA)
+SSCA_b <- q5_goal - q5_SSCA * (q95_goal - q5_goal) / (q95_SSCA - q5_SSCA)
+transformList <- c(transformList,
+transformList("SSC-A", flowCore::linearTransform(a = SSCA_a,
+b = SSCA_b)))
 
 ff_t <- transform(ff_c, transformList)
 
@@ -171,7 +189,8 @@ Quality control
 ```{r}
 ff_QC <- PeacoQC::PeacoQC(ff = ff_t, 
                           channels = channels_of_interest,
-                          output_directory = dir_QC)
+                          output_directory = dir_QC,
+                          plot = FALSE)
 
 plotDens(ff = ff_QC$FinalFF, original_ff = ff_t,markers = c("Time", "CD19"), adjust = 1)
 ```
@@ -192,14 +211,12 @@ live_gate <- flowCore::polygonGate(filterId = "Live",
                                                   dimnames = list(c(), c("FSC-A", "APC-Cy7-A"))))
 selected_live <- filter(ff_doublets, live_gate) 
 ff_l <- ff_doublets[selected_live@subSet,]
-plotDens(ff = ff_l, original_ff = ff_doublets, markers = c("CD3", "CD19"), adjust = 1)
+plotDens(ff = ff_l, original_ff = ff_doublets, markers = c("FSC-A", "APC-Cy7-A"), adjust = 1)
 
 ```
 
 ## Preprocessing all files
 ```{r}
-
-# p1, p2 ,... maken --> welke cellen verwijderd zijn
 
 for (file in files){
   
@@ -207,15 +224,37 @@ for (file in files){
   
   ff <- read.FCS(file)
   ff_margins <- PeacoQC::RemoveMargins(ff, channels = channels_of_interest)
+  p1 <- plotDens(ff = ff_margins, 
+                 original_ff = ff, 
+                 markers = c("FSC-A", "SSC-A"),
+                 adjust = 200) 
   comp <- ff@description$SPILL
   
   ff_c <- compensate(ff_margins, comp)
   ff_t <- transform(ff_c, transformList)
-  ff_QC <- PeacoQC::PeacoQC(ff = ff_t, channels = channels_of_interest, output_directory = dir_QC)
+  ff_QC <- PeacoQC::PeacoQC(ff = ff_t, channels = channels_of_interest, 
+                            output_directory = dir_QC, plot = FALSE)
+  p2 <- plotDens(ff = ff_QC$FinalFF, 
+                 original_ff = ff_t,
+                 markers = c("Time", "CD19"), 
+                 adjust = 1)
   ff_doublets <- PeacoQC::RemoveDoublets(ff_QC$FinalFF)
+  p3 <- plotDens(ff = ff_doublets, 
+                 original_ff = ff_t, 
+                 markers = c("FSC-A", "FSC-H"), 
+                 adjust = 1)
+
   selected_live <- filter(ff_doublets, live_gate) 
   ff_l <- ff_doublets[selected_live@subSet,]
+  p4 <- plotDens(ff = ff_l, 
+                 original_ff = ff_doublets, 
+                 markers = c("FSC-A", "APC-Cy7-A"), 
+                 adjust = 1)
+
+  plots <- ggarrange(p1,p2,p3,p4, nrow = 1)
   
+  print(annotate_figure(plots, top = text_grob(basename(file))))
+            
   write.FCS(ff_l, file.path(dir_prepr, basename(file)))
   
 }
