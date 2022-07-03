@@ -1,4 +1,4 @@
-plotDens <- function (ff, original_ff = NULL, markers, adjust = 1)
+plotDens <- function (ff, original_ff = NULL, markers, adjust = 1, title = NULL)
 {
 
   if (!is.null(original_ff)){
@@ -46,6 +46,8 @@ plotDens <- function (ff, original_ff = NULL, markers, adjust = 1)
     p <- p + geom_point(data = df[removed_meas,], color = "black")
   }
 
+  if(!is.null(title))
+    p <- p + ggtitle(title)
   return(p)
 
 }

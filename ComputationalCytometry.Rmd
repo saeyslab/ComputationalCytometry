@@ -42,16 +42,20 @@ source("Extra_functions.R") # To load in additional functions
 File organization should be:
 ComputationalCytometry (main folder)
 - Data
-+ Raw
-~ 21-10-15_Tube_011_Live.fcs
-~ 21-10-15_Tube_012_Live.fcs
-~ 21-10-15_Tube_013_Live.fcs
-~ 21-10-15_Tube_028_Live.fcs
-~ 21-10-15_Tube_030_Live.fcs
-~ 21-10-15_Tube_031_Live.fcs
-~ 21-10-15_Tube_032_Live.fcs
-- ComputationalCytometry.Rmd
-- Extra_functions.R
+  + Raw
+    ~ Control_Day1.fcs
+    ~ Control_Day2.fcs
+    ~ ManualLabeling.rds
+    ~ Tube01_WT_Day1.fcs
+    ~ Tube02_WT_Day1.fcs
+    ~ Tube03_WT_Day2.fcs
+    ~ Tube04_WT_Day2.fcs
+    ~ Tube05_KO_Day1.fcs
+    ~ Tube06_KO_Day1.fcs
+    ~ Tube07_KO_Day2.fcs
+    ~ Tube08_KO_Day2.fcs
+ - Extra_functions.R
+ - ComputationalCytometry.Rmd
 
 ## Directories
 ```{r}
@@ -102,7 +106,7 @@ pData(ff@parameters)
 ```
 
 ##Exercise
-How many events are measured in Tube 30?
+How many events are measured in Tube 5?
 ```{r}
 ```
 
@@ -158,7 +162,6 @@ plotDens(ff = ff_c,
 
 Transform the data using an estimateLogicle on all files
 ```{r}
-
 # Add Live Death channel to transform data and remove SSC from channels of interest
 # since it needs its own transformation
 channels_to_transform <- c(channels_of_interest[-1], GetChannels(ff, "L/D", exact = FALSE))
@@ -197,7 +200,6 @@ plotDens(ff = ff_QC$FinalFF, original_ff = ff_t,markers = c("Time", "CD19"), adj
 
 Data filtering (can include removal of debris, doublets, dead cells, etc.)
 ```{r}
-
 ff_doublets <- PeacoQC::RemoveDoublets(ff_QC$FinalFF)
 plotDens(ff = ff_doublets, original_ff = ff_t, markers = c("FSC-A", "FSC-H"), adjust = 1)
 
@@ -206,7 +208,7 @@ plotDens(ff = ff_doublets, original_ff = ff_t, markers = c("FSC-A", "FSC-H"), ad
 live_gate <- flowCore::polygonGate(filterId = "Live", 
                                    .gate = matrix(data = c(60000, 100000, 150000, 250000, 
                                                            250000, 60000, 60000, 1.6, 1.9, 
-                                                           2.5, 2.5, -0.3, -0.3, 1.6), 
+                                                           2.5, 2.5, -1.5, -1.5, 1.6), 
                                                   ncol = 2, 
                                                   dimnames = list(c(), c("FSC-A", "APC-Cy7-A"))))
 selected_live <- filter(ff_doublets, live_gate) 
@@ -217,7 +219,6 @@ plotDens(ff = ff_l, original_ff = ff_doublets, markers = c("FSC-A", "APC-Cy7-A")
 
 ## Preprocessing all files
 ```{r}
-
 for (file in files){
   
   print(file)
@@ -227,7 +228,8 @@ for (file in files){
   p1 <- plotDens(ff = ff_margins, 
                  original_ff = ff, 
                  markers = c("FSC-A", "SSC-A"),
-                 adjust = 200) 
+                 adjust = 200,
+                 title = "Remove margins") 
   comp <- ff@description$SPILL
   
   ff_c <- compensate(ff_margins, comp)
@@ -237,30 +239,29 @@ for (file in files){
   p2 <- plotDens(ff = ff_QC$FinalFF, 
                  original_ff = ff_t,
                  markers = c("Time", "CD19"), 
-                 adjust = 1)
+                 adjust = 1,
+                 title = "Remove low quality events")
   ff_doublets <- PeacoQC::RemoveDoublets(ff_QC$FinalFF)
   p3 <- plotDens(ff = ff_doublets, 
                  original_ff = ff_t, 
                  markers = c("FSC-A", "FSC-H"), 
-                 adjust = 1)
+                 adjust = 1,
+                 title = "Remove doublets")
 
   selected_live <- filter(ff_doublets, live_gate) 
   ff_l <- ff_doublets[selected_live@subSet,]
   p4 <- plotDens(ff = ff_l, 
                  original_ff = ff_doublets, 
                  markers = c("FSC-A", "APC-Cy7-A"), 
-                 adjust = 1)
+                 adjust = 1,
+                 title = "Remove dead cells")
 
-  plots <- ggarrange(p1,p2,p3,p4, nrow = 1)
+  pdf(paste0(dir_QC, sub(".fcs", ".pdf", basename(file))), height = 3, width = 12)
+  print(ggarrange(p1,p2,p3,p4, nrow = 1))
+  dev.off()
   
-  print(annotate_figure(plots, top = text_grob(basename(file))))
-            
   write.FCS(ff_l, file.path(dir_prepr, basename(file)))
-  
 }
-
-
-
 ```
 
 
@@ -269,6 +270,22 @@ for (file in files){
 Plot CD64 against FcERI for Tube 30
 ```{r}
 ```
+
+# Evaluate quality of the data
+## Plot the signal per channel and per file
+```{r}
+files <- list.files(path = dir_prepr, pattern = ".fcs", full.names = TRUE)[c(1, 3:4, 7:8, 2, 5:6, 9:10)]
+files
+
+day <- rep(c("Day1", "Day2"), each = 5)
+
+PlotFileScatters(input = files,
+                 channels = channels_of_interest,
+                 names = basename(files), legend = TRUE,
+                 groups = day, nrow = 2,
+                 plotFile = paste0(dir_QC, "file_scatters.png"))
+```
+
 
 
 #Normalisation
