@@ -1,3 +1,9 @@
+dir.create("Background_material/Subsetted/")
+dir.create("Background_material/Preprocessed//")
+dir.create("Background_material/Batched/")
+dir.create("Background_material/Final/")
+
+
 #### List raw files ####
 filesKO <- list.files(path = "Background_material/Raw", 
                       pattern = ".fcs", 
