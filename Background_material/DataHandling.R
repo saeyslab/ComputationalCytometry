@@ -14,7 +14,7 @@ filesWT <- list.files(path = "Background_material/Raw",
 
 #### Subset data and give more informative names ####
 subset_i <- matrix(NA,
-                   nrow = 3000000, ncol = 10,
+                   nrow = 300000, ncol = 10,
                    dimnames = list(NULL, 
                                    c(basename(filesWT),
                                      basename(filesKO),
@@ -64,7 +64,7 @@ saveRDS(subset_i, "Background_material/Subsetted/subsetIndices.rds")
 gating <- FlowSOM::GetFlowJoLabels(files = basename(c(filesWT, filesKO)),
                           wspFile = "Background_material/Raw/General_panel.wsp")
 files <- list.files(path = "Background_material/Subsetted", 
-                    pattern = ".fcs")
+                    pattern = ".fcs")[c(3:10, 1:2)]
 
 manual_labeling <- list()
 for (col in 1:ncol(subset_i)){
@@ -113,37 +113,31 @@ transformation <- matrix(NA,
                          dimnames = list(channels_of_interest, # Other transformation values for each channel
                                          c("shift", "scale"))) # 2 transformations
 set.seed(1)
-transformation[,"shift"] <- sample(c(800:900, 1100:1200), n)/1000
-transformation[,"scale"] <- sample(800:1200, n)/1000
+transformation[,"shift"] <- sample(c(850:950, 1050:1150), n)/1000
+transformation[,"scale"] <- sample(900:1100, n)/1000
+transformation[c("PE-A", "APC-A"), "shift"] <- c(1.2, 1.2)
+transformation["PerCP-Cy5-5-A", "shift"] <- 1.05
 
 for (file in files_batch){
   ff <- flowCore::read.FCS(file)
   for (channel in channels_of_interest){
     if (channel %in% c("PE-A", "APC-A")){ # Only affect positive population for CD3 and CD161
-      ff <- flowCore::read.FCS(sub("Preprocessed", "Subsetted", file))
-      ff_c <- flowCore::compensate(ff, ff@description$SPILL)
-      t <- flowCore::arcsinhTransform(transformationId="defaultArcsinhTransform", a=0, b=1/150)
-      t_list <- flowCore::transformList(cols_to_transform, t)
-      ff_t <- flowCore::transform(ff_c, t_list)
-      gate <- flowDensity::deGate(ff_t, channel)
-      ff <- flowCore::read.FCS(file)
+      gate <- flowDensity::deGate(ff, channel)
       pos <- ff@exprs[,channel] > gate
-      ff@exprs[,channel][pos] <- ff@exprs[,channel][pos] * transformation[channel, "shift"]
-      ff@exprs[,channel][pos] <- scales::rescale(ff@exprs[,channel][pos],
-                                                 to=c(min(ff@exprs[,channel][pos]),
-                                                      max(ff@exprs[,channel][pos]*transformation[channel, "scale"])))
-    } else if (channel == "PerCP-Cy5-A"){ #Only affect MHCII expression of DCs
+      ff@exprs[pos,channel] <- ff@exprs[pos,channel] * transformation[channel, "shift"]
+      
+    } else if (channel == "PerCP-Cy5-5-A"){ #Only affect MHCII expression of DCs
       DC <- manual_labeling[[basename(file)]] == "DCs"
-      ff@exprs[,channel][DC] <- ff@exprs[,channel][pos] * transformation[channel, "shift"]
-      ff@exprs[,channel][DC] <- scales::rescale(ff@exprs[,channel][DC],
-                                                 to=c(min(ff@exprs[,channel][DC]),
-                                                      max(ff@exprs[,channel][DC]*transformation[channel, "scale"])))
-    } else {
-      ff@exprs[,channel] <- ff@exprs[,channel] * transformation[channel, "shift"]
-      ff@exprs[,channel] <- scales::rescale(ff@exprs[,channel],
-                                            to=c(min(ff@exprs[,channel]),
-                                                 max(ff@exprs[,channel])*transformation[channel, "scale"]))
-    }
+      ff@exprs[DC,channel] <- (ff@exprs[DC,channel] * transformation[channel, "shift"])
+      ff@exprs[DC,channel] <- scales::rescale(ff@exprs[DC,channel],
+                                                 to=c(min(ff@exprs[DC,channel]),
+                                                      max(ff@exprs[DC,channel]*transformation[channel, "scale"])))
+    }# else {
+    #   ff@exprs[,channel] <- ff@exprs[,channel] * transformation[channel, "shift"]
+    #   ff@exprs[,channel] <- scales::rescale(ff@exprs[,channel],
+    #                                         to=c(min(ff@exprs[,channel]),
+    #                                              max(ff@exprs[,channel])*transformation[channel, "scale"]))
+    # }
   }
   flowCore::write.FCS(ff, sub("Preprocessed", "Batched", file))
 }

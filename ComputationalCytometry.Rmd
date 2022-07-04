@@ -10,16 +10,17 @@ editor_options:
 # Install and load the libraries
 ## Install the libraries
 ```{r}
-if (!requireNamespace("BiocManager", quietly = TRUE))
-  install.packages("BiocManager")
-BiocManager::install("flowCore")
-BiocManager::install("ggplot2")
-BiocManager::install("ggpubr")
-BiocManager::install("pheatmap")
-BiocManager::install("tidyr")
-BiocManager::install("FlowSOM")
-BiocManager::install("PeacoQC")
-devtools::install_github("LKremer/ggpointdensity")
+# if (!requireNamespace("BiocManager", quietly = TRUE))
+#   install.packages("BiocManager")
+# BiocManager::install("flowCore")
+# BiocManager::install("ggplot2")
+# BiocManager::install("ggpubr")
+# BiocManager::install("pheatmap")
+# BiocManager::install("tidyr")
+# BiocManager::install("FlowSOM")
+# BiocManager::install("PeacoQC")
+# devtools::install_github("LKremer/ggpointdensity")
+# devtools::install_github("saeyslab/CytoNorm")
 ```
 
 ## Load the libraries
@@ -32,6 +33,7 @@ library("tidyr")
 library("FlowSOM") # For FlowSOM clustering and functions
 library("PeacoQC") # For quality control
 library("ggpointdensity") # For nice density plots
+library("CytoNorm") # For normalization
 
 source("Extra_functions.R") # To load in additional functions
 ```
@@ -105,13 +107,12 @@ Check the channels and markers in the flowframe
 pData(ff@parameters)
 ```
 
-##Exercise
+## Exercise
 How many events are measured in Tube 5?
 ```{r}
 ```
 
-#Preprocessing
-
+# Preprocessing
 ## Set some variables
 ```{r}
 # List markers of interest
@@ -131,7 +132,7 @@ plotDens(ff = ff,
          adjust = 200)
 ```
 
-Remove margins events
+## Remove margins events
 ```{r}
 ff_margins <- PeacoQC::RemoveMargins(ff, channels = channels_of_interest)
 ```
@@ -145,7 +146,7 @@ plotDens(ff = ff_margins,
 ```
 
 
-Compensate the data with the spillover matrix acquired at the machine
+## Compensate the data with the spillover matrix acquired at the machine
 ```{r}
 comp <- ff@description$SPILL
 comp
@@ -160,7 +161,7 @@ plotDens(ff = ff_c,
 ```
 
 
-Transform the data using an estimateLogicle on all files
+## Transform the data using an estimateLogicle on all files
 ```{r}
 # Add Live Death channel to transform data and remove SSC from channels of interest
 # since it needs its own transformation
@@ -179,7 +180,7 @@ q95_SSCA <- quantile(exprs(ff_t)[,"SSC-A"], 0.95)
 SSCA_a <- (q95_goal - q5_goal) / (q95_SSCA - q5_SSCA)
 SSCA_b <- q5_goal - q5_SSCA * (q95_goal - q5_goal) / (q95_SSCA - q5_SSCA)
 transformList <- c(transformList,
-transformList("SSC-A", flowCore::linearTransform(a = SSCA_a,
+                   transformList("SSC-A", flowCore::linearTransform(a = SSCA_a,
 b = SSCA_b)))
 
 ff_t <- transform(ff_c, transformList)
@@ -187,8 +188,7 @@ ff_t <- transform(ff_c, transformList)
 plotDens(ff = ff_t, markers = c("CD3", "CD19"), adjust = 1)
 ```
 
-Quality control
-
+## Quality control
 ```{r}
 ff_QC <- PeacoQC::PeacoQC(ff = ff_t, 
                           channels = channels_of_interest,
@@ -198,7 +198,7 @@ ff_QC <- PeacoQC::PeacoQC(ff = ff_t,
 plotDens(ff = ff_QC$FinalFF, original_ff = ff_t,markers = c("Time", "CD19"), adjust = 1)
 ```
 
-Data filtering (can include removal of debris, doublets, dead cells, etc.)
+## Data filtering (can include removal of debris, doublets, dead cells, etc.)
 ```{r}
 ff_doublets <- PeacoQC::RemoveDoublets(ff_QC$FinalFF)
 plotDens(ff = ff_doublets, original_ff = ff_t, markers = c("FSC-A", "FSC-H"), adjust = 1)
@@ -266,18 +266,23 @@ for (file in files){
 
 
 ## Exercise
-
-Plot CD64 against FcERI for Tube 30
+Plot CD64 against FcERI for Tube 5
 ```{r}
 ```
 
 # Evaluate quality of the data
 ## Plot the signal per channel and per file
 ```{r}
-files <- list.files(path = dir_prepr, pattern = ".fcs", full.names = TRUE)[c(1, 3:4, 7:8, 2, 5:6, 9:10)]
+files <- list.files(path = dir_prepr, pattern = ".fcs", full.names = TRUE)
 files
 
-day <- rep(c("Day1", "Day2"), each = 5)
+order <- order(sub(".*(Day.).*", "\\1", files)) #To reorder files according to batch
+
+files <- files[order]
+files
+
+day <- sub(".*(Day.).*", "\\1", files)
+day
 
 PlotFileScatters(input = files,
                  channels = channels_of_interest,
@@ -286,12 +291,281 @@ PlotFileScatters(input = files,
                  plotFile = paste0(dir_QC, "file_scatters.png"))
 ```
 
+# Normalisation
+## Directories
+```{r}
+dir_norm <- "Data/Normalized"
+dir_MinMax <- "Data/Normalized/MinMax/"
+dir_quant <- "Data/Normalized/Quantile/"
+dir_CytoNorm <- "Data/Normalized/CytoNorm/"
+
+for (dir in c(dir_norm, dir_MinMax, dir_quant, dir_CytoNorm)){
+  dir.create(dir)
+}
+
+```
+
+## MinMax
+Most simple approach: nor
+x' = (x - min(x)) / (max(x) - min(x))
+- Upside: easy to understand
+- Downside: often too simplistic, sensitive to outliers, file-approach might remove biological variation
+```{r}
+files_prepr <- list.files(path = dir_prepr,
+                          pattern = ".fcs",
+                          full.names = TRUE)[order]
+
+for (file in files_prepr){
+  ff <- read.FCS(file)
+  for (channel in channels_of_interest){
+    min <- min(ff@exprs[,channel])
+    max <- max(ff@exprs[,channel])
+    ff@exprs[,channel] <- (ff@exprs[,channel] - min)/(max - min)
+  }
+  write.FCS(ff, paste0(dir_MinMax, basename(file)))
+}
+
+PlotFileScatters(input = list.files(path = dir_MinMax,
+                                    pattern = ".fcs",
+                                    full.names = TRUE)[order],
+                 channels = channels_of_interest,
+                 names = basename(files), legend = TRUE,
+                 groups = day, nrow = 2,
+                 plotFile = paste0(dir_MinMax, "file_scatters.png"))
+```
+
+## Quantile, batch approach
+Find the e.g. 0.01 and 0.99 quantiles of the first batch, compute the parameters to align the quantiles of the second batch to the first one and apply this to all batch 2 files.
+x' = (x - min(x)) / (max(x) - min(x))
+x' = goal_min + ((x- min(x)) * (goal_max - goal_min)) / (max(x) - min(x))
+- Upside: batch approach preserves biological variation, less sensitive to outliers
+- Downside: might still be too simplistic, cannot resolve population-specific batch effects
+```{r}
+files_Day1 <- list.files(path = dir_prepr,
+                          pattern = "Day1.fcs",
+                          full.names = TRUE)
+files_Day2 <- list.files(path = dir_prepr,
+                          pattern = "Day2.fcs",
+                          full.names = TRUE)
+batch1 <- AggregateFlowFrames(fileNames = files_Day1, 
+                              cTotal = 100000,
+                              seed = 1)
+batch2 <- AggregateFlowFrames(fileNames = files_Day2, 
+                              cTotal = 100000,
+                              seed = 1)
+
+for (file in files_Day1){ # Copy day 1 files without normalizing
+  ff <- read.FCS(file)
+  write.FCS(ff, paste0(dir_quant, basename(file)))
+}
+for (file in files_Day2){ # Quantile normalization for Day 2 files
+  ff <- read.FCS(file)
+  for (channel in channels_of_interest){
+    batch1_q01 <- quantile(batch1@exprs[,channel], 0.01) # Calculate goal quantile
+    batch1_q99 <- quantile(batch1@exprs[,channel], 0.99)
+    batch2_q01 <- quantile(batch2@exprs[,channel], 0.01) # Calculate quantiles of whole day 2 batch
+    batch2_q99 <- quantile(batch2@exprs[,channel], 0.99)
+    ff@exprs[,channel] <- batch1_q01 + ((ff@exprs[,channel]- batch2_q01) * (batch1_q99 - batch1_q01)) / (batch2_q99 - batch2_q01)
+  }
+  write.FCS(ff, paste0(dir_quant, basename(file)))
+}
+
+PlotFileScatters(input = list.files(path = dir_quant,
+                                    pattern = ".fcs",
+                                    full.names = TRUE)[order],
+                 channels = channels_of_interest,
+                 names = basename(files), legend = TRUE,
+                 groups = day, nrow = 2,
+                 plotFile = paste0(dir_quant, "file_scatters.png"))
+```
+
+## CytoNorm
+Algorithm that first performs a clustering and computes splines to align cell populations, then this model can be used to normalize all files.
+- Upside: can resolve population-specific batch effects
+- Downside: cannot be used when size of batch effect is larger than size of biological difference (~ metaclustering)
+```{r}
+# Train model
+model <- CytoNorm.train(files = c("Data/Preprocessed/Control_Day1.fcs",
+                                  "Data/Preprocessed/Control_Day2.fcs"),
+                        labels = c("Day1", "Day2"),
+                        channels = channels_of_interest,
+                        transformList = NULL,
+                        outputDir = dir_CytoNorm, 
+                        FlowSOM.params = list(xdim = 7, ydim = 7, nClus = 10), 
+                        seed = 1)
+
+# Apply model
+CytoNorm.normalize(model = model,
+                   files = list.files(path = dir_prepr, 
+                                      full.names = TRUE, 
+                                      pattern = ".fcs")[order],
+                   labels = rep(c("Day1", "Day2"), each = 5),
+                   transformList = NULL,
+                   outputDir = dir_CytoNorm,
+                   prefix = "", 
+                   transformList.reverse = NULL)
+
+PlotFileScatters(input = list.files(path = dir_CytoNorm,
+                                    pattern = ".fcs",
+                                    full.names = TRUE)[order],
+                 channels = channels_of_interest,
+                 names = basename(files), legend = TRUE,
+                 groups = day, nrow = 2,
+                 plotFile = paste0(dir_CytoNorm, "file_scatters.png"))
+```
+
+# Make aggregate file
+```{r}
+files <- list.files(path = dir_CytoNorm,
+                    pattern = ".fcs",
+                    full.names = TRUE)[order]
+files
+
+set.seed(1)
+agg <- AggregateFlowFrames(fileNames = files,
+                           cTotal = 500000,
+                           writeOutput = TRUE,
+                           outputFile = paste0(dir_CytoNorm, "aggregate.fcs"))
+```
+
+# Make FlowSOM model 
+```{r}
+fsom <- FlowSOM(input = agg,
+                colsToUse = channels_of_interest,
+                seed = 1,
+                nClus = 15,
+                xdim = 10, ydim = 10)
+saveRDS(fsom, paste(dir_RDS, "fsom.rds"))
+```
+
+# Test FlowSOM quality
+## Make 2D scatter plots
+```{r}
+channel_pairs = list(c("CD19", "SSC-A"),
+                     c("CD3", "CD161"),
+                     c("CD64", "CD49b"),
+                     c("CD11c", "MHCII"),
+                     c("Ly-6G", "CD11b"))
+
+Plot2DScatters(fsom = fsom,
+               channelpairs = channel_pairs,
+               metaclusters = 1:15,
+               clusters = 1,
+               plotFile = paste0(dir_results, "fsom_2D_scatters.png"))
+```
+
+## Check consistency with manual gating
+```{r}
+manual <- readRDS("Data/Raw/ManualLabeling.rds")
+
+agg_labels <- rep(NA, nrow(agg))
+for (file_nr in unique(agg@exprs[,"File"])){
+  man <- as.character(manual[[basename(files[file_nr])]])
+  row_ids <- agg@exprs[,"File"] == file_nr
+  agg_labels[row_ids] <- man[agg@exprs[,"Original_ID"][row_ids]]
+}
+
+PlotPies(fsom = fsom,
+         cellTypes = factor(agg_labels,
+                            levels = c("Unlabeled", "B cells", "T cells", "DCs", 
+                                       "NK cells","Neutrophils", "Macrophages", 
+                                       "NK T cells", "Basophils")))
+ggsave("Results/fsom_manual.pdf")
+```
+
+## Calculate the purity of the FlowSOM clustering
+Returns the mean purity score, worst purity score and number of clusters with score <0.75
+```{r}
+Purity(realClusters = agg_labels,
+       predictedClusters = GetClusters(fsom))
+```
+
+## Inspect the file contribution per cluster
+```{r}
+file_colors <- c("#6a040f", "#9d0208", "#d00000", "#dc2f02", "#e85d04", #Different shades within the groups
+                 "#03045e", "#023e8a", "#0077b6", "#0096c7", "#00b4d8") 
+
+PlotPies(fsom = fsom,
+         cellTypes = factor(basename(files)[fsom$data[,"File"]],
+                           levels = basename(files)),
+         colorPalette = file_colors)
+ggsave(paste0(dir_results, "fsom_filecontribution.pdf"))
+```
+
+# Discovery and downstream analysis
+## Eplore the FlowSOM result, make the FlowSOMmary
+```{r}
+FlowSOMmary(fsom = fsom,
+            plotFile = paste0(dir_results, "fsom_summary.pdf"))
+```
+
+## Look for nodes with a specific pattern
+```{r}
+query <- list("B cells" = c("CD19" = "high", "CD3" = "low"),
+              "NK cells" = c("CD19" = "low", "CD161" = "high", 
+                             "MHCII" = "low"),
+              "T cells" = c("CD3" = "high", "MHCII" = "low", "Ly-6G" = "low"),
+              "Macrophages" = c("CD64" = "high", "FcERI" = "high", 
+                                "MHCII" = "high", "CD49b" = "high", 
+                                "Ly-6G" = "low"),
+              "Dendritic cells" = c("CD11c" = "high", "MHCII" = "high", 
+                                    "CD11b" = "high", "FcERI" = "low"),
+              "Neutrophils" = c("Ly-6G" = "high", "CD11b" = "high", 
+                                "CD3" = "low"))
+
+labels <- QueryMultiple(fsom = fsom,
+                        cellTypes = query,
+                        plotFile = paste0(dir_results, "fsom_QueryStarPlot.pdf"))
+
+PlotVariable(fsom = fsom,
+             variable = labels)
+ggsave(paste0(dir_results, "fsom_query.pdf"))
+```
+
+## Rename metaclusters
+```{r}
+# fsom <- UpdateMetaclusters(fsom,
+#                            newLabels = c("1" = "1: ",
+#                                          "2" = "2: ",
+#                                          "3" = "3: ",
+#                                          "4" = "4: ",
+#                                          "5" = "5: ",
+#                                          "6" = "6: ",
+#                                          "7" = "7: ",
+#                                          "8" = "8: ",
+#                                          "9" = "9: ",
+#                                          "10" = "10: ",
+#                                          "11" = "11: ",
+#                                          "12" = "12: ",
+#                                          "13" = "13: ",
+#                                          "14" = "14: ",
+#                                          "15" = "15: "))
+```
 
 
-#Normalisation
+## Get features per fcs file
+```{r}
+features <- GetFeatures(fsom = fsom,
+                        files = files,
+                        filenames = basename(files),
+                        level = c("clusters", "metaclusters"),
+                        type = c("counts", "MFI", "percentages"),
+                        MFI = c("Ly-6G", "CD49b"))
 
-#FlowSOm + analyse
+names(features)
+```
 
-
-
+## Visualize features
+```{r}
+df <- data.frame(features$metacluster_percentages[c(2:4, 6:10),]*100, 
+                 check.names = FALSE)
+df$Group <- factor(x = c("WT", "WT", "KO", "KO",
+                         "WT", "WT", "KO", "KO"))
+df_g <- gather(df, "Feature", "Percentage", -Group)
+ggplot(data = df_g, aes(x=Group, y=Percentage))+
+  geom_boxplot() +
+  geom_point(aes(color=Group)) +
+  facet_wrap(~Feature, scales = "free") +
+  theme_minimal()
+```
 
