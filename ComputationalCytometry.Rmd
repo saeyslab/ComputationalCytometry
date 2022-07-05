@@ -432,8 +432,8 @@ agg <- AggregateFlowFrames(fileNames = files,
 ```{r}
 fsom <- FlowSOM(input = agg,
                 colsToUse = channels_of_interest,
-                seed = 1,
-                nClus = 15,
+                seed = 2020,
+                nClus = 10,
                 xdim = 10, ydim = 10)
 saveRDS(fsom, paste(dir_RDS, "fsom.rds"))
 ```
@@ -449,7 +449,7 @@ channel_pairs = list(c("CD19", "SSC-A"),
 
 Plot2DScatters(fsom = fsom,
                channelpairs = channel_pairs,
-               metaclusters = 1:15,
+               metaclusters = 1:10,
                clusters = 1,
                plotFile = paste0(dir_results, "fsom_2D_scatters.png"))
 ```
@@ -524,28 +524,23 @@ ggsave(paste0(dir_results, "fsom_query.pdf"))
 
 ## Rename metaclusters
 ```{r}
-# fsom <- UpdateMetaclusters(fsom,
-#                            newLabels = c("1" = "1: ",
-#                                          "2" = "2: ",
-#                                          "3" = "3: ",
-#                                          "4" = "4: ",
-#                                          "5" = "5: ",
-#                                          "6" = "6: ",
-#                                          "7" = "7: ",
-#                                          "8" = "8: ",
-#                                          "9" = "9: ",
-#                                          "10" = "10: ",
-#                                          "11" = "11: ",
-#                                          "12" = "12: ",
-#                                          "13" = "13: ",
-#                                          "14" = "14: ",
-#                                          "15" = "15: "))
+fsom_annotated <- UpdateMetaclusters(fsom,
+                                     newLabels = c("1" = "1: B cells",
+                                                   "2" = "2: B cells",
+                                                   "3" = "3: Macrophages and unlabeld",
+                                                   "4" = "4: Macrophages",
+                                                   "5" = "5: Neutrophils",
+                                                   "6" = "6: DCs",
+                                                   "7" = "7: Unlabeled",
+                                                   "8" = "8: Unlabeled",
+                                                   "9" = "9: NK cells",
+                                                   "10" = "10: T cells"))
 ```
 
 
 ## Get features per fcs file
 ```{r}
-features <- GetFeatures(fsom = fsom,
+features <- GetFeatures(fsom = fsom_annotated,
                         files = files,
                         filenames = basename(files),
                         level = c("clusters", "metaclusters"),
@@ -557,11 +552,16 @@ names(features)
 
 ## Visualize features
 ```{r}
-df <- data.frame(features$metacluster_percentages[c(2:4, 6:10),]*100, 
+df <- data.frame(features$metacluster_percentages[c(2:5, 7:10),]*100, 
                  check.names = FALSE)
 df$Group <- factor(x = c("WT", "WT", "KO", "KO",
                          "WT", "WT", "KO", "KO"))
 df_g <- gather(df, "Feature", "Percentage", -Group)
+df_g$Feature <- factor(x = df_g$Feature,
+                       levels = c("%MC1: B cells", "%MC2: B cells", 
+                                  "%MC3: Macrophages and unlabeld", "%MC4: Macrophages", 
+                                  "%MC5: Neutrophils", "%MC6: DCs", "%MC7: Unlabeled", 
+                                  "%MC8: Unlabeled", "%MC9: NK cells", "%MC10: T cells"))
 ggplot(data = df_g, aes(x=Group, y=Percentage))+
   geom_boxplot() +
   geom_point(aes(color=Group)) +

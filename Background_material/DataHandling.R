@@ -81,10 +81,11 @@ p5 <- NULL
 for (file in files){
   ff <- flowCore::read.FCS(file)
   comp <- ff@description$SPILL
+  ff_c <- flowCore::compensate(ff, comp)
   cols_to_transform <- colnames(comp)
   t <- flowCore::arcsinhTransform(transformationId="defaultArcsinhTransform", a=0, b=1/150)
   t_list <- flowCore::transformList(cols_to_transform, t)
-  ff_t <- flowCore::transform(ff, t_list)
+  ff_t <- flowCore::transform(ff_c, t_list)
   SSCA <- ff_t@exprs[,"SSC-A"]
   if (is.null(p5)){ # Calculate percentiles on first file and apply to all
     p5 <- quantile(SSCA, 0.05)
@@ -107,37 +108,31 @@ channels_of_interest <- c("PE-Cy7-A", "PE-Cy5-A", "PE-A", "Alexa Fluor 700-A",
                           "APC-A", "SSC-A", "PerCP-Cy5-5-A", "Pacific Blue-A", 
                           "BV605-A","BV711-A", "BV786-A")
 n <- length(channels_of_interest)
-transformation <- matrix(NA,
-                         nrow = n,
+transformation <- matrix(c(0.5, -0.5, 0.3, 1, 0.9, 1.1),
+                         nrow = 3,
                          ncol = 2,
-                         dimnames = list(channels_of_interest, # Other transformation values for each channel
+                         dimnames = list(c("PE-A", "PerCP-Cy5-5-A", "APC-A"), # Other transformation values for each channel
                                          c("shift", "scale"))) # 2 transformations
-set.seed(1)
-transformation[,"shift"] <- sample(c(850:950, 1050:1150), n)/1000
-transformation[,"scale"] <- sample(900:1100, n)/1000
-transformation[c("PE-A", "APC-A"), "shift"] <- c(1.2, 1.2)
-transformation["PerCP-Cy5-5-A", "shift"] <- 1.05
-
 for (file in files_batch){
   ff <- flowCore::read.FCS(file)
   for (channel in channels_of_interest){
-    if (channel %in% c("PE-A", "APC-A")){ # Only affect positive population for CD3 and CD161
+    if (channel == "PE-A"){ # Only affect positive population for CD3
       gate <- flowDensity::deGate(ff, channel)
       pos <- ff@exprs[,channel] > gate
-      ff@exprs[pos,channel] <- ff@exprs[pos,channel] * transformation[channel, "shift"]
-      
+      ff@exprs[pos,channel] <- ff@exprs[pos,channel] + transformation[channel, "shift"]
+
     } else if (channel == "PerCP-Cy5-5-A"){ #Only affect MHCII expression of DCs
       DC <- manual_labeling[[basename(file)]] == "DCs"
-      ff@exprs[DC,channel] <- (ff@exprs[DC,channel] * transformation[channel, "shift"])
+      ff@exprs[DC,channel] <- (ff@exprs[DC,channel] + transformation[channel, "shift"])
       ff@exprs[DC,channel] <- scales::rescale(ff@exprs[DC,channel],
                                                  to=c(min(ff@exprs[DC,channel]),
                                                       max(ff@exprs[DC,channel]*transformation[channel, "scale"])))
-    }# else {
-    #   ff@exprs[,channel] <- ff@exprs[,channel] * transformation[channel, "shift"]
-    #   ff@exprs[,channel] <- scales::rescale(ff@exprs[,channel],
-    #                                         to=c(min(ff@exprs[,channel]),
-    #                                              max(ff@exprs[,channel])*transformation[channel, "scale"]))
-    # }
+    } else if (channel == "APC-A"){# Affect whole population for CD161
+      ff@exprs[,channel] <- ff@exprs[,channel] + transformation[channel, "shift"]
+      ff@exprs[,channel] <- scales::rescale(ff@exprs[,channel],
+                                            to=c(min(ff@exprs[,channel]),
+                                                 max(ff@exprs[,channel])*transformation[channel, "scale"]))
+    }
   }
   flowCore::write.FCS(ff, sub("Preprocessed", "Batched", file))
 }
@@ -162,6 +157,8 @@ for (file in files_batched){
                                         FUN = function(x) sinh(x)*150)
   ff_or <- flowCore::read.FCS(sub("Batched", "Subsetted", file))
   ff_or@exprs <- ff@exprs
+  
+  ff_or <- flowCore::decompensate(ff_or, ff_or@description$SPILL)
   flowCore::write.FCS(ff_or, sub("Batched", "Final", file))
 }
 
