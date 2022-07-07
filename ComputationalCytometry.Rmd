@@ -19,7 +19,7 @@ editor_options:
 # BiocManager::install("tidyr")
 # BiocManager::install("FlowSOM")
 # BiocManager::install("PeacoQC")
-# devtools::install_github("LKremer/ggpointdensity")
+devtools::install_github("LKremer/ggpointdensity")
 # devtools::install_github("saeyslab/CytoNorm")
 ```
 
@@ -43,6 +43,7 @@ source("Extra_functions.R") # To load in additional functions
 ## File organization
 File organization should be:
 ComputationalCytometry (main folder)
+- Background_material
 - Data
   + Raw
     ~ Control_Day1.fcs
@@ -58,6 +59,7 @@ ComputationalCytometry (main folder)
     ~ Tube08_KO_Day2.fcs
  - Extra_functions.R
  - ComputationalCytometry.Rmd
+ - FlowSOM_Cheatsheet.pdf
 
 ## Directories
 ```{r}
@@ -195,7 +197,7 @@ ff_QC <- PeacoQC::PeacoQC(ff = ff_t,
                           output_directory = dir_QC,
                           plot = FALSE)
 
-plotDens(ff = ff_QC$FinalFF, original_ff = ff_t,markers = c("Time", "CD19"), adjust = 1)
+plotDens(ff = ff_QC$FinalFF, original_ff = ff_t, markers = c("Time", "CD19"), adjust = 1)
 ```
 
 ## Data filtering (can include removal of debris, doublets, dead cells, etc.)
@@ -256,7 +258,7 @@ for (file in files){
                  adjust = 1,
                  title = "Remove dead cells")
 
-  pdf(paste0(dir_QC, sub(".fcs", ".pdf", basename(file))), height = 3, width = 12)
+  png(paste0(dir_QC, sub(".fcs", ".png", basename(file))), height = 300, width = 1200)
   print(ggarrange(p1,p2,p3,p4, nrow = 1))
   dev.off()
   
@@ -331,7 +333,8 @@ PlotFileScatters(input = list.files(path = dir_MinMax,
                  channels = channels_of_interest,
                  names = basename(files), legend = TRUE,
                  groups = day, nrow = 2,
-                 plotFile = paste0(dir_MinMax, "file_scatters.png"))
+                 plotFile = paste0(dir_MinMax, "file_scatters.png"),
+                 silent = TRUE)
 ```
 
 ## Quantile, batch approach
@@ -349,10 +352,10 @@ files_Day2 <- list.files(path = dir_prepr,
                           full.names = TRUE)
 batch1 <- AggregateFlowFrames(fileNames = files_Day1, 
                               cTotal = 100000,
-                              seed = 1)
+                              seed = 2022)
 batch2 <- AggregateFlowFrames(fileNames = files_Day2, 
                               cTotal = 100000,
-                              seed = 1)
+                              seed = 2022)
 
 for (file in files_Day1){ # Copy day 1 files without normalizing
   ff <- read.FCS(file)
@@ -376,7 +379,8 @@ PlotFileScatters(input = list.files(path = dir_quant,
                  channels = channels_of_interest,
                  names = basename(files), legend = TRUE,
                  groups = day, nrow = 2,
-                 plotFile = paste0(dir_quant, "file_scatters.png"))
+                 plotFile = paste0(dir_quant, "file_scatters.png"),
+                 silent = TRUE)
 ```
 
 ## CytoNorm
@@ -392,7 +396,7 @@ model <- CytoNorm.train(files = c("Data/Preprocessed/Control_Day1.fcs",
                         transformList = NULL,
                         outputDir = dir_CytoNorm, 
                         FlowSOM.params = list(xdim = 7, ydim = 7, nClus = 10), 
-                        seed = 1)
+                        seed = 2022)
 
 # Apply model
 CytoNorm.normalize(model = model,
@@ -411,7 +415,8 @@ PlotFileScatters(input = list.files(path = dir_CytoNorm,
                  channels = channels_of_interest,
                  names = basename(files), legend = TRUE,
                  groups = day, nrow = 2,
-                 plotFile = paste0(dir_CytoNorm, "file_scatters.png"))
+                 plotFile = paste0(dir_CytoNorm, "file_scatters.png"),
+                 silent = TRUE)
 ```
 
 # Make aggregate file
@@ -421,7 +426,7 @@ files <- list.files(path = dir_CytoNorm,
                     full.names = TRUE)[order]
 files
 
-set.seed(1)
+set.seed(2022)
 agg <- AggregateFlowFrames(fileNames = files,
                            cTotal = 500000,
                            writeOutput = TRUE,
@@ -432,10 +437,13 @@ agg <- AggregateFlowFrames(fileNames = files,
 ```{r}
 fsom <- FlowSOM(input = agg,
                 colsToUse = channels_of_interest,
-                seed = 2020,
+                seed = 2022,
                 nClus = 10,
                 xdim = 10, ydim = 10)
-saveRDS(fsom, paste(dir_RDS, "fsom.rds"))
+saveRDS(fsom, paste0(dir_RDS, "fsom.rds"))
+
+PlotStars(fsom = fsom,
+          backgroundValues = fsom$metaclustering)
 ```
 
 # Test FlowSOM quality
@@ -499,6 +507,13 @@ FlowSOMmary(fsom = fsom,
             plotFile = paste0(dir_results, "fsom_summary.pdf"))
 ```
 
+## Exercise
+Plot a FlowSOM tree with the nodes colored according to CD19 expression. Hint: check the PlotMarker function in the FlowSOM_Cheatsheet.
+```{r}
+
+```
+
+
 ## Look for nodes with a specific pattern
 ```{r}
 query <- list("B cells" = c("CD19" = "high", "CD3" = "low"),
@@ -522,19 +537,23 @@ PlotVariable(fsom = fsom,
 ggsave(paste0(dir_results, "fsom_query.pdf"))
 ```
 
-## Rename metaclusters
+## Exercise
+Annotate metaclusters
 ```{r}
+PlotManualBars(fsom = fsom,
+               manualVector = agg_labels)
+
 fsom_annotated <- UpdateMetaclusters(fsom,
-                                     newLabels = c("1" = "1: B cells",
-                                                   "2" = "2: B cells",
-                                                   "3" = "3: Macrophages and unlabeld",
-                                                   "4" = "4: Macrophages",
-                                                   "5" = "5: Neutrophils",
-                                                   "6" = "6: DCs",
-                                                   "7" = "7: Unlabeled",
-                                                   "8" = "8: Unlabeled",
-                                                   "9" = "9: NK cells",
-                                                   "10" = "10: T cells"))
+                                     newLabels = c("1" = "1: ",
+                                                   "2" = "2: ",
+                                                   "3" = "3: ",
+                                                   "4" = "4: ",
+                                                   "5" = "5: ",
+                                                   "6" = "6: ",
+                                                   "7" = "7: ",
+                                                   "8" = "8: ",
+                                                   "9" = "9: ",
+                                                   "10" = "10: "))
 ```
 
 
@@ -557,11 +576,7 @@ df <- data.frame(features$metacluster_percentages[c(2:5, 7:10),]*100,
 df$Group <- factor(x = c("WT", "WT", "KO", "KO",
                          "WT", "WT", "KO", "KO"))
 df_g <- gather(df, "Feature", "Percentage", -Group)
-df_g$Feature <- factor(x = df_g$Feature,
-                       levels = c("%MC1: B cells", "%MC2: B cells", 
-                                  "%MC3: Macrophages and unlabeld", "%MC4: Macrophages", 
-                                  "%MC5: Neutrophils", "%MC6: DCs", "%MC7: Unlabeled", 
-                                  "%MC8: Unlabeled", "%MC9: NK cells", "%MC10: T cells"))
+df_g$Feature <- factor(x = df_g$Feature)
 ggplot(data = df_g, aes(x=Group, y=Percentage))+
   geom_boxplot() +
   geom_point(aes(color=Group)) +
