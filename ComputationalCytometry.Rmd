@@ -19,7 +19,7 @@ editor_options:
 # BiocManager::install("tidyr")
 # BiocManager::install("FlowSOM")
 # BiocManager::install("PeacoQC")
-devtools::install_github("LKremer/ggpointdensity")
+# devtools::install_github("LKremer/ggpointdensity")
 # devtools::install_github("saeyslab/CytoNorm")
 ```
 

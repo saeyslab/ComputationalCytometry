@@ -43,7 +43,7 @@ plotDens <- function (ff, original_ff = NULL, markers, adjust = 1, title = NULL)
     ylab(markers[2])
 
   if(!is.null(original_ff)){
-    p <- p + geom_point(data = df[removed_meas,], color = "black")
+    p <- p + geom_point(data = df[removed_meas,], color = "grey60")
   }
 
   if(!is.null(title))
@@ -58,7 +58,8 @@ estimateTransformation <- function(files, channels, cTotal = 5000*length(files))
   if(length(names(channels))>0){
     channels <- unname(channels)
   }
-
+  
+  set.seed(2022)
   ff_agg <- AggregateFlowFrames(files, cTotal = cTotal)
   transformList <- estimateLogicle(ff_agg, channels)
 
