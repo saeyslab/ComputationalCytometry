@@ -7,6 +7,8 @@ editor_options:
   chunk_output_type: inline
 ---
 
+FlowSOM protocol: https://doi.org/10.1038/s41596-021-00550-0
+
 # Install and load the libraries
 ## Install the libraries
 ```{r}
@@ -76,9 +78,8 @@ for (path in c(dir_prepr, dir_QC, dir_RDS, dir_results)){
 }
 ```
 
-# Data exploration
-## Overview
-Identify the fcs files of interest on the system
+# Preprocessing
+## List files
 ```{r}
 getwd() # What is the current working directory?
 # setwd() # To set the correct working directory
@@ -88,38 +89,12 @@ files <- list.files(dir, pattern = ".fcs", full.names = TRUE)
 files
 ```
 
-Load an fcs file into a flowFrame
-```{r}
-ff <- read.FCS(files[1])
-ff
-```
-
-Check the expression matrix stored in the flowframe
-```{r}
-head(ff@exprs)
-```
-
-Check the metadata stored in the flowframe
-```{r}
-head(ff@description)
-```
-
-Check the channels and markers in the flowframe
-```{r}
-pData(ff@parameters)
-```
-
-## Exercise
-How many events are measured in Tube 5?
-```{r}
-```
-
-# Preprocessing
 ## Set some variables
 ```{r}
 # List markers of interest
 markers_of_interest <- c("SSC-A", "MHCII", "CD49b", "CD11b", "CD64",
                          "FcERI", "CD161", "Ly-6G", "CD3", "CD19", "CD11c")
+ff <- read.FCS(files[1])
 channels_of_interest <- GetChannels(object = ff,
                                     markers = markers_of_interest, 
                                     exact = FALSE)
@@ -191,6 +166,7 @@ plotDens(ff = ff_t, markers = c("CD3", "CD19"), adjust = 1)
 ```
 
 ## Quality control
+PeacoQC: https://doi.org/10.1002/cyto.a.24501
 ```{r}
 ff_QC <- PeacoQC::PeacoQC(ff = ff_t, 
                           channels = channels_of_interest,
@@ -384,6 +360,7 @@ PlotFileScatters(input = list.files(path = dir_quant,
 ```
 
 ## CytoNorm
+CytoNorm: https://doi.org/10.1002/cyto.a.23904
 Algorithm that first performs a clustering and computes splines to align cell populations, then this model can be used to normalize all files.
 - Upside: can resolve population-specific batch effects
 - Downside: cannot be used when size of batch effect is larger than size of biological difference (~ metaclustering)
@@ -421,7 +398,7 @@ PlotFileScatters(input = list.files(path = dir_CytoNorm,
 
 # Make aggregate file
 ```{r}
-files <- list.files(path = dir_CytoNorm,
+files <- list.files(path = dir_CytoNorm, #dir_prepr if no normalization was needed
                     pattern = ".fcs",
                     full.names = TRUE)[order]
 files
@@ -434,6 +411,7 @@ agg <- AggregateFlowFrames(fileNames = files,
 ```
 
 # Make FlowSOM model 
+FlowSOM https://doi.org/10.1002/cyto.a.22625
 ```{r}
 fsom <- FlowSOM(input = agg,
                 colsToUse = channels_of_interest,
