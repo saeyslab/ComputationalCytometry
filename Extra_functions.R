@@ -23,7 +23,7 @@ plotDens <- function (ff, original_ff = NULL, markers, adjust = 1, title = NULL)
 
 
 
-  channels <- GetChannels(to_plot_ff, markers, exact = FALSE)
+  channels <- FlowSOM::GetChannels(to_plot_ff, markers, exact = FALSE)
 
   df <- ff_sub@exprs[,channels] %>% as.data.frame()
   colnames(df) <- markers
@@ -58,7 +58,7 @@ estimateTransformation <- function(files, channels, cTotal = 5000*length(files))
   if(length(names(channels))>0){
     channels <- unname(channels)
   }
-  
+
   set.seed(2022)
   ff_agg <- AggregateFlowFrames(files, cTotal = cTotal)
   transformList <- estimateLogicle(ff_agg, channels)
