@@ -19,9 +19,10 @@ FlowSOM protocol: https://doi.org/10.1038/s41596-021-00550-0
 # BiocManager::install("ggpubr")
 # BiocManager::install("pheatmap")
 # BiocManager::install("tidyr")
-# BiocManager::install("FlowSOM")
-# BiocManager::install("PeacoQC")
+# BiocManager::install("CytoML")
 # devtools::install_github("LKremer/ggpointdensity")
+# devtools::install_github("saeyslab/FlowSOM")
+# devtools::install_github("saeyslab/PeacoQC")
 # devtools::install_github("saeyslab/CytoNorm")
 ```
 
@@ -47,6 +48,8 @@ File organization should be:
 ComputationalCytometry (main folder)
 - Background_material
 - Data
+  + AdditionalExercise
+  + exampleMatrix.RDS
   + Raw
     ~ Control_Day1.fcs
     ~ Control_Day2.fcs
@@ -221,7 +224,7 @@ for (file in files){
                  title = "Remove low quality events")
   ff_doublets <- PeacoQC::RemoveDoublets(ff_QC$FinalFF)
   p3 <- plotDens(ff = ff_doublets, 
-                 original_ff = ff_t, 
+                 original_ff = ff_QC$FinalFF, 
                  markers = c("FSC-A", "FSC-H"), 
                  adjust = 1,
                  title = "Remove doublets")
@@ -522,7 +525,7 @@ PlotManualBars(fsom = fsom,
                manualVector = agg_labels)
 
 fsom_annotated <- UpdateMetaclusters(fsom,
-                                     newLabels = c("1" = "1: ",
+                                     newLabels = c("1" = "1: T cells",
                                                    "2" = "2: ",
                                                    "3" = "3: ",
                                                    "4" = "4: ",
