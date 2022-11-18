@@ -361,6 +361,7 @@ features <- GetFeatures(fsom = fsom_annotated,
                         MFI = c("Ly-6G", "CD49b"))
 
 names(features)
+
 ```
 
 ## Visualize features
