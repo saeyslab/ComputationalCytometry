@@ -15,6 +15,10 @@ TRUE
 a <- 5
 # Show what is stored in a variable (also look at environment tab)
 a
+# Variables are case sensitive
+A <- 6
+A
+a
 # Reuse the variable
 a + a
 
@@ -54,6 +58,7 @@ head(b, n = 3)
 # Help page
 ?head
 
+
 # More structured data ----
 
 ## Matrices ----
@@ -83,6 +88,62 @@ myList[["numbers"]]
 person <- list(name = "Sofie",
                job = "Bioinformatician",
                pets = "1")
+
+
+# If - else statements ----
+fruitbasket <- c("banana", "apple", "pineapple", "blueberry")
+
+if ("banana" %in% fruitbasket){
+  print("That is a fruit!")
+} else {
+  print("That's not a fruit!")
+}
+
+if ("carrot" %in% fruitbasket){
+  print("That is a fruit!")
+} else {
+  print("That's not a fruit!")
+}
+
+# It is also possible to add a third statement in the if - else statement
+if (name %in% fruitbasket){
+  print("name is a fruit")
+} else if (name %in% b){
+  print("name is a number")
+} else {
+  print("name is not a number nor a fruit")
+}
+
+# For loops ----
+
+# Can be used to iterate over a sequence such as a list or vector
+for (fruit in fruitbasket){
+  print(fruit)
+}
+
+for (x in 1:10){
+  print(x + 1)
+}
+
+# Ex: loop over fruitbasket and the vector b and print if it is a number a fruit
+# or none of both
+for (part in c(fruitbasket, b)){
+  print(part)
+  if (part %in% fruitbasket){
+    print("Part is a fruit")
+  } else if (part %in% b){
+    print("Part is a number")
+  } else {
+    print("Part is not a fruit nor a number")
+  }
+}
+
+# Ex: loop over every value in a matrix and print the value
+for (i in 1:nrow(m)){
+  for (j in 1:ncol(m)){
+    print(m[i, j])
+  }
+}
 
 # Packages ----
 
