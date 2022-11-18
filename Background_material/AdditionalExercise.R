@@ -38,7 +38,6 @@ markers_of_interest <- GetMarkers(ff, channels_of_interest)
 transformList <- transformList(channels_of_interest,
                                arcsinhTransform(a = 0, b = 1/5))
 
-file <- files[1]
 for (file in files){
 
   print(file)
@@ -85,6 +84,20 @@ set.seed(2022)
 agg <- AggregateFlowFrames(fileNames = files,
                            cTotal = 500000)
 
+agg_manual <- c()
+i <- 1
+for (file in files){
+  agg_manual <- c(agg_manual,
+                  as.character(manual[[basename(file)]][["manual"]][(exprs(agg)[,"Original_ID"])[exprs(agg)[,"File"]==i]]))
+  i <- i + 1
+}
+agg_manual <- factor(agg_manual,
+                     levels = c("Unknown",
+                                "Naive CD4+ T cells", "Memory CD4+ T cells", 
+                                "Naive CD8+ T cells", "Memory CD8+ T cells", 
+                                "TCRgd T cells", "pDCs", "Macrophages", 
+                                "B cells", "NK cells"))
+
 fsom <- FlowSOM(input = agg,
                 colsToUse = channels_of_interest,
                 seed = 2022,
@@ -117,6 +130,12 @@ diff[is.na(diff)] <- 0
 p3 <- PlotVariable(fsom, diff, "Difference",
              colorPalette = colorRampPalette(colors = rev(RColorBrewer::brewer.pal(9,"RdBu"))),
              equalNodeSize = TRUE)
+p4 <- PlotPies(fsom = fsom, 
+               cellTypes = agg_manual)
 
-gridExtra::grid.arrange(p1$tree + ggtitle("Unstimulated"),
-                        p2$tree + ggtitle("Stimulated"))
+gridExtra::grid.arrange(nrow = 2,
+                        p1$tree + ggtitle("Unstimulated"),
+                        p2$tree + ggtitle("Stimulated"),
+                        p3 + ggtitle("Difference"),
+                        p4 + ggtitle("Manual labeling"))
+

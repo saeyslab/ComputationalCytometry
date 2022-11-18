@@ -1,3 +1,4 @@
+##### Data ComputationalCytometry ##############################################
 dir.create("Background_material/Subsetted/")
 dir.create("Background_material/Preprocessed//")
 dir.create("Background_material/Batched/")
@@ -166,3 +167,18 @@ for (file in files_or){
   ff <- flowCore::read.FCS(file)
   flowCore::write.FCS(ff, sub("Subsetted", "Final", file))
 }
+
+
+##### Data ComputationalCytometry Beginner #####################################
+
+
+##### Data AdditionalExercise ##################################################
+files <- list.files(path = "Data/AdditionalExercise",
+                    pattern = ".fcs",
+                    full.names = TRUE)
+for (file in files){
+  ff <- read.FCS(file)
+  write.FCS(ff, file)
+}
+
+  
