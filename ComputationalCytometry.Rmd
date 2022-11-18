@@ -92,8 +92,7 @@ files <- list.files(dir, pattern = ".fcs", full.names = TRUE)
 files
 ```
 
-## Set some variables
-```{r}
+## Set some variables```{r}
 # List markers of interest
 markers_of_interest <- c("SSC-A", "MHCII", "CD49b", "CD11b", "CD64",
                          "FcERI", "CD161", "Ly-6G", "CD3", "CD19", "CD11c")
@@ -109,19 +108,6 @@ Plot two markers against each other in the traditional dot plot
 ```{r}
 plotDens(ff = ff, 
          markers = c("CD3", "CD19"),
-         adjust = 200)
-```
-
-## Remove margins events
-```{r}
-ff_margins <- PeacoQC::RemoveMargins(ff, channels = channels_of_interest)
-```
-
-Plot Density
-```{r}
-plotDens(ff = ff_margins, 
-         original_ff = ff,
-         markers = c("FSC-A", "SSC-A"),
          adjust = 200)
 ```
 
@@ -168,35 +154,6 @@ ff_t <- transform(ff_c, transformList)
 plotDens(ff = ff_t, markers = c("CD3", "CD19"), adjust = 1)
 ```
 
-## Quality control
-PeacoQC: https://doi.org/10.1002/cyto.a.24501
-```{r}
-ff_QC <- PeacoQC::PeacoQC(ff = ff_t, 
-                          channels = channels_of_interest,
-                          output_directory = dir_QC,
-                          plot = FALSE)
-
-plotDens(ff = ff_QC$FinalFF, original_ff = ff_t, markers = c("Time", "CD19"), adjust = 1)
-```
-
-## Data filtering (can include removal of debris, doublets, dead cells, etc.)
-```{r}
-ff_doublets <- PeacoQC::RemoveDoublets(ff_QC$FinalFF)
-plotDens(ff = ff_doublets, original_ff = ff_t, markers = c("FSC-A", "FSC-H"), adjust = 1)
-
-
-# Remove dead cells
-live_gate <- flowCore::polygonGate(filterId = "Live", 
-                                   .gate = matrix(data = c(60000, 100000, 150000, 250000, 
-                                                           250000, 60000, 60000, 1.6, 1.9, 
-                                                           2.5, 2.5, -1.5, -1.5, 1.6), 
-                                                  ncol = 2, 
-                                                  dimnames = list(c(), c("FSC-A", "APC-Cy7-A"))))
-selected_live <- filter(ff_doublets, live_gate) 
-ff_l <- ff_doublets[selected_live@subSet,]
-plotDens(ff = ff_l, original_ff = ff_doublets, markers = c("FSC-A", "APC-Cy7-A"), adjust = 1)
-
-```
 
 ## Preprocessing all files
 ```{r}
@@ -205,40 +162,22 @@ for (file in files){
   print(file)
   
   ff <- read.FCS(file)
-  ff_margins <- PeacoQC::RemoveMargins(ff, channels = channels_of_interest)
-  p1 <- plotDens(ff = ff_margins, 
-                 original_ff = ff, 
+
+  p1 <- plotDens(ff = ff, 
                  markers = c("FSC-A", "SSC-A"),
                  adjust = 200,
-                 title = "Remove margins") 
+                 title = "Original file") 
   comp <- ff@description$SPILL
   
-  ff_c <- compensate(ff_margins, comp)
+  ff_c <- compensate(ff, comp)
   ff_t <- transform(ff_c, transformList)
-  ff_QC <- PeacoQC::PeacoQC(ff = ff_t, channels = channels_of_interest, 
-                            output_directory = dir_QC, plot = FALSE)
-  p2 <- plotDens(ff = ff_QC$FinalFF, 
-                 original_ff = ff_t,
-                 markers = c("Time", "CD19"), 
-                 adjust = 1,
-                 title = "Remove low quality events")
-  ff_doublets <- PeacoQC::RemoveDoublets(ff_QC$FinalFF)
-  p3 <- plotDens(ff = ff_doublets, 
-                 original_ff = ff_QC$FinalFF, 
-                 markers = c("FSC-A", "FSC-H"), 
-                 adjust = 1,
-                 title = "Remove doublets")
-
-  selected_live <- filter(ff_doublets, live_gate) 
-  ff_l <- ff_doublets[selected_live@subSet,]
-  p4 <- plotDens(ff = ff_l, 
-                 original_ff = ff_doublets, 
-                 markers = c("FSC-A", "APC-Cy7-A"), 
-                 adjust = 1,
-                 title = "Remove dead cells")
-
-  png(paste0(dir_QC, sub(".fcs", ".png", basename(file))), height = 300, width = 1200)
-  print(ggarrange(p1,p2,p3,p4, nrow = 1))
+  
+  p2 <- plotDens(ff = ff_t, 
+                 markers = c("FSC-A", "SSC-A"), 
+                 title = "Compensated and transformed file")
+  
+  png(paste0(dir_QC, sub(".fcs", ".png", basename(file))), height = 300, width = 600)
+  print(ggarrange(p1, p2, nrow = 1))
   dev.off()
   
   write.FCS(ff_l, file.path(dir_prepr, basename(file)))
@@ -272,136 +211,10 @@ PlotFileScatters(input = files,
                  plotFile = paste0(dir_QC, "file_scatters.png"))
 ```
 
-# Normalisation
-## Directories
-```{r}
-dir_norm <- "Data/Normalized"
-dir_MinMax <- "Data/Normalized/MinMax/"
-dir_quant <- "Data/Normalized/Quantile/"
-dir_CytoNorm <- "Data/Normalized/CytoNorm/"
-
-for (dir in c(dir_norm, dir_MinMax, dir_quant, dir_CytoNorm)){
-  dir.create(dir)
-}
-
-```
-
-## MinMax
-Most simple approach: nor
-x' = (x - min(x)) / (max(x) - min(x))
-- Upside: easy to understand
-- Downside: often too simplistic, sensitive to outliers, file-approach might remove biological variation
-```{r}
-files_prepr <- list.files(path = dir_prepr,
-                          pattern = ".fcs",
-                          full.names = TRUE)[order]
-
-for (file in files_prepr){
-  ff <- read.FCS(file)
-  for (channel in channels_of_interest){
-    min <- min(ff@exprs[,channel])
-    max <- max(ff@exprs[,channel])
-    ff@exprs[,channel] <- (ff@exprs[,channel] - min)/(max - min)
-  }
-  write.FCS(ff, paste0(dir_MinMax, basename(file)))
-}
-
-PlotFileScatters(input = list.files(path = dir_MinMax,
-                                    pattern = ".fcs",
-                                    full.names = TRUE)[order],
-                 channels = channels_of_interest,
-                 names = basename(files), legend = TRUE,
-                 groups = day, nrow = 2,
-                 plotFile = paste0(dir_MinMax, "file_scatters.png"),
-                 silent = TRUE)
-```
-
-## Quantile, batch approach
-Find the e.g. 0.01 and 0.99 quantiles of the first batch, compute the parameters to align the quantiles of the second batch to the first one and apply this to all batch 2 files.
-x' = (x - min(x)) / (max(x) - min(x))
-x' = goal_min + ((x- min(x)) * (goal_max - goal_min)) / (max(x) - min(x))
-- Upside: batch approach preserves biological variation, less sensitive to outliers
-- Downside: might still be too simplistic, cannot resolve population-specific batch effects
-```{r}
-files_Day1 <- list.files(path = dir_prepr,
-                          pattern = "Day1.fcs",
-                          full.names = TRUE)
-files_Day2 <- list.files(path = dir_prepr,
-                          pattern = "Day2.fcs",
-                          full.names = TRUE)
-batch1 <- AggregateFlowFrames(fileNames = files_Day1, 
-                              cTotal = 100000,
-                              seed = 2022)
-batch2 <- AggregateFlowFrames(fileNames = files_Day2, 
-                              cTotal = 100000,
-                              seed = 2022)
-
-for (file in files_Day1){ # Copy day 1 files without normalizing
-  ff <- read.FCS(file)
-  write.FCS(ff, paste0(dir_quant, basename(file)))
-}
-for (file in files_Day2){ # Quantile normalization for Day 2 files
-  ff <- read.FCS(file)
-  for (channel in channels_of_interest){
-    batch1_q01 <- quantile(batch1@exprs[,channel], 0.01) # Calculate goal quantile
-    batch1_q99 <- quantile(batch1@exprs[,channel], 0.99)
-    batch2_q01 <- quantile(batch2@exprs[,channel], 0.01) # Calculate quantiles of whole day 2 batch
-    batch2_q99 <- quantile(batch2@exprs[,channel], 0.99)
-    ff@exprs[,channel] <- batch1_q01 + ((ff@exprs[,channel]- batch2_q01) * (batch1_q99 - batch1_q01)) / (batch2_q99 - batch2_q01)
-  }
-  write.FCS(ff, paste0(dir_quant, basename(file)))
-}
-
-PlotFileScatters(input = list.files(path = dir_quant,
-                                    pattern = ".fcs",
-                                    full.names = TRUE)[order],
-                 channels = channels_of_interest,
-                 names = basename(files), legend = TRUE,
-                 groups = day, nrow = 2,
-                 plotFile = paste0(dir_quant, "file_scatters.png"),
-                 silent = TRUE)
-```
-
-## CytoNorm
-CytoNorm: https://doi.org/10.1002/cyto.a.23904
-Algorithm that first performs a clustering and computes splines to align cell populations, then this model can be used to normalize all files.
-- Upside: can resolve population-specific batch effects
-- Downside: cannot be used when size of batch effect is larger than size of biological difference (~ metaclustering)
-```{r}
-# Train model
-model <- CytoNorm.train(files = c("Data/Preprocessed/Control_Day1.fcs",
-                                  "Data/Preprocessed/Control_Day2.fcs"),
-                        labels = c("Day1", "Day2"),
-                        channels = channels_of_interest,
-                        transformList = NULL,
-                        outputDir = dir_CytoNorm, 
-                        FlowSOM.params = list(xdim = 7, ydim = 7, nClus = 10), 
-                        seed = 2022)
-
-# Apply model
-CytoNorm.normalize(model = model,
-                   files = list.files(path = dir_prepr, 
-                                      full.names = TRUE, 
-                                      pattern = ".fcs")[order],
-                   labels = rep(c("Day1", "Day2"), each = 5),
-                   transformList = NULL,
-                   outputDir = dir_CytoNorm,
-                   prefix = "", 
-                   transformList.reverse = NULL)
-
-PlotFileScatters(input = list.files(path = dir_CytoNorm,
-                                    pattern = ".fcs",
-                                    full.names = TRUE)[order],
-                 channels = channels_of_interest,
-                 names = basename(files), legend = TRUE,
-                 groups = day, nrow = 2,
-                 plotFile = paste0(dir_CytoNorm, "file_scatters.png"),
-                 silent = TRUE)
-```
 
 # Make aggregate file
 ```{r}
-files <- list.files(path = dir_CytoNorm, #dir_prepr if no normalization was needed
+files <- list.files(path = dir_prepr,
                     pattern = ".fcs",
                     full.names = TRUE)[order]
 files
