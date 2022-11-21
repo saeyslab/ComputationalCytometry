@@ -1,3 +1,4 @@
+##### Data ComputationalCytometry ##############################################
 dir.create("Background_material/Subsetted/")
 dir.create("Background_material/Preprocessed//")
 dir.create("Background_material/Batched/")
@@ -166,3 +167,151 @@ for (file in files_or){
   ff <- flowCore::read.FCS(file)
   flowCore::write.FCS(ff, sub("Subsetted", "Final", file))
 }
+
+
+##### Data ComputationalCytometry Beginner #####################################
+dir.create("Background_material/Subsetted/")
+dir.create("Background_material/Preprocessed//")
+dir.create("Background_material/Batched/")
+dir.create("Background_material/Final/")
+
+
+#### List raw files ####
+filesKO <- list.files(path = "Background_material/Raw", 
+                      pattern = ".fcs", 
+                      full.names = TRUE)[1:3]
+filesWT <- list.files(path = "Background_material/Raw", 
+                      pattern = ".fcs", 
+                      full.names = TRUE)[4:7]
+
+#### Subset data and give more informative names ####
+subset_i <- matrix(NA,
+                   nrow = 300000, ncol = 10,
+                   dimnames = list(NULL, 
+                                   c(basename(filesWT),
+                                     basename(filesKO),
+                                     basename(filesKO[1]),
+                                     rep(basename(filesWT[1]), 2))))
+
+day <- rep(rep(c(1,2), each = 2),2)
+
+tube <- 1
+set.seed(1)
+for (file in filesWT){
+  ff <- flowCore::read.FCS(file)
+  i <- sort(sample(1:nrow(ff), 300000))
+  flowCore::write.FCS(ff[i,], paste0("Background_material/Subsetted/Tube0", tube, "_WT_", "Day", day[tube], ".fcs"))
+  subset_i[,tube] <- i
+  tube <- tube + 1
+}
+
+for (file in filesKO){
+  ff <- flowCore::read.FCS(file)
+  i <- sort(sample(1:nrow(ff), 300000))
+  flowCore::write.FCS(ff[i,], paste0("Background_material/Subsetted/Tube0", tube, "_KO_", "Day", day[tube], ".fcs"))
+  subset_i[,tube] <- i
+  tube <- tube + 1
+}
+
+# Sample other file out of first file (to have 2 KO samples in batch 2)
+ff <- flowCore::read.FCS(filesKO[1])
+i <- sort(sample(1:nrow(ff), 300000))  
+flowCore::write.FCS(ff[i,], paste0("Background_material/Subsetted/Tube0", tube, "_KO_", "Day", day[tube], ".fcs"))
+subset_i[,tube] <- i
+tube <- tube + 1
+
+# Sample 2 other file out of first WT file (to have control in each batch)
+ff <- flowCore::read.FCS(filesWT[1])
+for (ctrl in 1:2){
+  i <- sort(sample(1:nrow(ff), 300000))  
+  flowCore::write.FCS(ff[i,], paste0("Background_material/Subsetted/Control_Day", ctrl, ".fcs"))
+  subset_i[,tube] <- i
+  tube <- tube + 1
+}
+
+
+saveRDS(subset_i, "Background_material/Subsetted/subsetIndices.rds")
+
+#### Preprocess files ####
+files <- list.files(path = "Background_material/Subsetted",
+                    pattern = ".fcs",
+                    full.names = TRUE)
+p5 <- NULL
+markers_of_interest <- c("SSC-A", "MHCII", "CD49b", "CD11b", "CD64",
+                         "FcERI", "CD161", "Ly-6G", "CD3", "CD19", "CD11c")
+ff <- flowCore::read.FCS(files[1])
+channels_of_interest <- FlowSOM::GetChannels(object = ff,
+                                             markers = markers_of_interest, 
+                                             exact = FALSE)
+
+for (file in files){
+  ff <- flowCore::read.FCS(file)
+  comp <- ff@description$SPILL
+  ff_c <- flowCore::compensate(ff, comp)
+  cols_to_transform <- colnames(comp)
+  t <- flowCore::arcsinhTransform(transformationId="defaultArcsinhTransform", a=0, b=1/150)
+  t_list <- flowCore::transformList(cols_to_transform, t)
+  ff_t <- flowCore::transform(ff_c, t_list)
+  SSCA <- ff_t@exprs[,"SSC-A"]
+  if (is.null(p5)){ # Calculate percentiles on first file and apply to all
+    p5 <- quantile(SSCA, 0.05)
+    p95 <- quantile(SSCA, 0.95)
+  }
+  SSCA <- 10 * (SSCA - p5) / (p95 - p5)
+  ff_t@exprs[,"SSC-A"] <- SSCA
+  
+  ff_QC <- PeacoQC::PeacoQC(ff = ff_t, channels = channels_of_interest, 
+                            plot = FALSE)
+  
+  ff_doublets <- PeacoQC::RemoveDoublets(ff_QC$FinalFF)
+  live_gate <- flowCore::polygonGate(filterId = "Live", 
+                                     .gate = matrix(data = c(60000, 100000, 150000, 250000, 
+                                                             250000, 60000, 60000, 1.6, 1.9, 
+                                                             2.5, 2.5, -1.5, -1.5, 1.6), 
+                                                    ncol = 2, 
+                                                    dimnames = list(c(), c("FSC-A", "APC-Cy7-A"))))
+  selected_live <- flowCore::filter(ff_doublets, live_gate) 
+  ff_l <- ff_doublets[selected_live@subSet,]
+  
+  flowCore::write.FCS(ff_l, sub("Subsetted", "Preprocessed", file))
+}
+
+#### Apply indices on original fcs files ####
+files <- list.files(path = "Background_material/Preprocessed",
+                    pattern = ".fcs",
+                    full.names = TRUE)
+
+for (file in files){
+  ff <- flowCore::read.FCS(file)
+  
+  ff_or <- flowCore::read.FCS(sub("Preprocessed", "Subsetted", file))
+
+  ff_or <- ff_or[flowCore::exprs(ff)[,"Original_ID"],]
+  flowCore::write.FCS(ff_or, sub("Preprocessed", "Final", file))
+}
+
+#### Get manual labels ####
+gating <- FlowSOM::GetFlowJoLabels(files = basename(c(filesWT, filesKO)),
+                                   wspFile = "Background_material/Raw/General_panel.wsp")
+files <- list.files(path = "Background_material/Final", 
+                    pattern = ".fcs")[c(3:10, 1:2)]
+
+manual_labeling <- list()
+for (col in 1:ncol(subset_i)){
+  ff <- flowCore::read.FCS(paste0("Background_material/Preprocessed/", files[col]))
+  labels_subset <- gating[[colnames(subset_i)[col]]][["manual"]][subset_i[,col]]
+  manual_labeling[[files[col]]] <- labels_subset[flowCore::exprs(ff)[,"Original_ID"]]
+}
+
+saveRDS(manual_labeling, "Background_material/Subsetted/ManualLabeling.rds")
+
+##### Data AdditionalExercise ##################################################
+files <- list.files(path = "Data/AdditionalExercise",
+                    pattern = ".fcs",
+                    full.names = TRUE)
+for (file in files){
+  ff <- read.FCS(file)
+  write.FCS(ff, file)
+}
+
+  
