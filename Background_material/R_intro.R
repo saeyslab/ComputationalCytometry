@@ -51,6 +51,7 @@ a + b
 mean(b)
 length(b)
 head(b)
+str(b)
 
 # Functions can take multiple arguments
 head(b, n = 3)
@@ -67,20 +68,20 @@ m <- readRDS("Data/exampleMatrix.RDS")
 m
 nrow(m)
 ncol(m)
-m[1,]
+m[1, ]
 m[, 1]
 m[, "CD45"]
-m[, c(1,2)]
+m[, c(1, 2)]
 
 # Ex: Show the first two rows
-m[c(1,2), ]
+m[c(1, 2), ]
 # Ex: Show the CD19 value of the third cell
 m[3, "CD19"]
 
 ## Lists ----
 
-myList <- list(numbers = c(1,2,4),
-               letters = c("a","b"))
+myList <- list(numbers = c(1, 2, 4),
+               letters = c("a", "b"))
 myList$numbers
 myList[["numbers"]]
 
@@ -93,17 +94,19 @@ person <- list(name = "Sofie",
 # If - else statements ----
 fruitbasket <- c("banana", "apple", "pineapple", "blueberry")
 
-if ("banana" %in% fruitbasket){
-  print("That is a fruit!")
-} else {
-  print("That's not a fruit!")
-}
-
 if ("carrot" %in% fruitbasket){
   print("That is a fruit!")
 } else {
   print("That's not a fruit!")
 }
+
+delivery <- "banana"
+if (delivery %in% fruitbasket){
+  print(paste0(delivery, " is a fruit!"))
+} else {
+  print("That's not a fruit!")
+}
+
 
 # It is also possible to add a third statement in the if - else statement
 if (name %in% fruitbasket){
@@ -153,8 +156,8 @@ tsne <- Rtsne(m, perplexity = 2)
 
 library("ggplot2")
 to_plot <- data.frame(m,
-                      tsne_1 = tsne$Y[,1],
-                      tsne_2 = tsne$Y[,2])
+                      tsne_1 = tsne$Y[, 1],
+                      tsne_2 = tsne$Y[, 2])
 ggplot(to_plot) +
   geom_point(aes(x = tsne_1, y = tsne_2, col = FSC.A)) +
   scale_color_distiller(palette = "RdYlBu") +
@@ -183,7 +186,7 @@ head(keyword(ff)) # Look at all metadata
 keyword(ff, "SPILL") # Look at one specific keyword
 
 pData(parameters(ff)) # Look at the channels and marker names
-FlowSOM::GetChannels(ff, c("CD3","CD11b"), exact = FALSE)
+FlowSOM::GetChannels(ff, c("CD3", "CD11b"), exact = FALSE)
 
 # Ex: How many events are measured in tube 5?
 ff5 <- read.FCS("Data/Raw/Tube05_KO_Day1.fcs")
@@ -191,8 +194,8 @@ nrow(exprs(ff5))
 nrow(ff5)
 
 # Ex: On which $DATE was tube 5 measured?
-keyword(ff, "$DATE")
-names(keyword(ff))
+keyword(ff5, "$DATE")
+names(keyword(ff5))
 
 # Ex: What is measured in PE-Cy5-A
-FlowSOM::GetMarkers(ff, "PE-Cy5-A")
+FlowSOM::GetMarkers(ff5, "PE-Cy5-A")
