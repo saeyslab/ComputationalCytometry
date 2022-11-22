@@ -51,6 +51,7 @@ a + b
 mean(b)
 length(b)
 head(b)
+str(b)
 
 # Functions can take multiple arguments
 head(b, n = 3)
@@ -93,17 +94,19 @@ person <- list(name = "Sofie",
 # If - else statements ----
 fruitbasket <- c("banana", "apple", "pineapple", "blueberry")
 
-if ("banana" %in% fruitbasket){
-  print("That is a fruit!")
-} else {
-  print("That's not a fruit!")
-}
-
 if ("carrot" %in% fruitbasket){
   print("That is a fruit!")
 } else {
   print("That's not a fruit!")
 }
+
+delivery <- "banana"
+if (delivery %in% fruitbasket){
+  print(paste0(delivery, " is a fruit!"))
+} else {
+  print("That's not a fruit!")
+}
+
 
 # It is also possible to add a third statement in the if - else statement
 if (name %in% fruitbasket){
@@ -191,8 +194,8 @@ nrow(exprs(ff5))
 nrow(ff5)
 
 # Ex: On which $DATE was tube 5 measured?
-keyword(ff, "$DATE")
-names(keyword(ff))
+keyword(ff5, "$DATE")
+names(keyword(ff5))
 
 # Ex: What is measured in PE-Cy5-A
-FlowSOM::GetMarkers(ff, "PE-Cy5-A")
+FlowSOM::GetMarkers(ff5, "PE-Cy5-A")
