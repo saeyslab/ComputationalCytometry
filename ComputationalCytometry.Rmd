@@ -50,30 +50,37 @@ ComputationalCytometry (main folder)
 - Data
   + AdditionalExercise
   + exampleMatrix.RDS
-  + Raw
-    ~ Control_Day1.fcs
-    ~ Control_Day2.fcs
+  + 1_raw
+    ~ Day1_WT_Control1
+    ~ Day1_WT_Sample1
+    ~ Day1_WT_Sample3
+    ~ Day1_KO_Control2
+    ~ Day1_KO_Sample2
+    ~ Day1_KO_Sample4
+    ~ Day2_WT_Control1
+    ~ Day2_WT_Sample5
+    ~ Day2_WT_Sample7
+    ~ Day2_KO_Control2
+    ~ Day2_KO_Sample6
+    ~ Day2_KO_Sample8
     ~ ManualLabeling.rds
-    ~ Tube01_WT_Day1.fcs
-    ~ Tube02_WT_Day1.fcs
-    ~ Tube03_WT_Day2.fcs
-    ~ Tube04_WT_Day2.fcs
-    ~ Tube05_KO_Day1.fcs
-    ~ Tube06_KO_Day1.fcs
-    ~ Tube07_KO_Day2.fcs
-    ~ Tube08_KO_Day2.fcs
+    ~ COMP240110_day1.csv
+    ~ COMP240110_day2.csv
+  + meta.xlsx
  - Extra_functions.R
  - ComputationalCytometry.Rmd
  - FlowSOM_Cheatsheet.pdf
+ - AdditionalExercise_ComputationalCytometry.pdf
+ - AdditionalExercise.R
 
 ## Directories
 ```{r}
 # Set directories
-dir_prepr <- "Data/Preprocessed/" #where the preprocessed data will be stored
-dir_QC <- "Data/Preprocessed/QC/" #where the data QC results will be stored
+dir_prepr <- "Data/2_preprocessed/" #where the preprocessed data will be stored
+dir_QC <- "Data/2_preprocessed/QC/" #where the data QC results will be stored
 dir_RDS <- "RDS/" #where the R objects will be stored
 dir_results <- "Results/" #where the results will be stored
-dir_raw <- "Data/Raw/" #where the raw data is located
+dir_raw <- "Data/1_raw/" #where the raw data is located
 
 # Create directories
 for (path in c(dir_prepr, dir_QC, dir_RDS, dir_results)){
@@ -81,13 +88,45 @@ for (path in c(dir_prepr, dir_QC, dir_RDS, dir_results)){
 }
 ```
 
+# Exploration
+## Reading in the FCS file
+```{r}
+ff <- read.FCS("Data/1_raw/Day1_KO_Control2.fcs")
+```
+
+## Structure of the flowframe
+```{r}
+head(ff@exprs)
+ff@parameters
+head(ff@description)
+ff@description$SPILL
+```
+
+## Excercises
+- Find the number of cells in the file
+- Find the acquisition date
+```{r}
+ff@description$`$DATE`
+
+nrow(exprs(ff))
+```
+
+
+
 # Preprocessing
+## Read in metadata
+```{r}
+meta <- readxl::read_xlsx("Data/meta.xlsx")
+meta <- data.frame(meta, check.names = FALSE)
+meta
+```
+
 ## List files
 ```{r}
 getwd() # What is the current working directory?
 # setwd() # To set the correct working directory
 
-dir <- "Data/Raw" # Point to directory where the data is located
+dir <- "Data/1_raw" # Point to directory where the data is located
 files <- list.files(dir, pattern = ".fcs", full.names = TRUE)
 files
 ```
@@ -95,77 +134,100 @@ files
 ## Set some variables
 ```{r}
 # List markers of interest
-markers_of_interest <- c("SSC-A", "MHCII", "CD49b", "CD11b", "CD64",
-                         "FcERI", "CD161", "Ly-6G", "CD3", "CD19", "CD11c")
-ff <- read.FCS(files[1])
+markers_of_interest <- c("FSC-A", "SSC-A", "CD103#BUV395", "CD4#BUV496", 
+                         "CD8a#BUV615", "CD86#BUV735", "CD45#BUV805", 
+                         "CD62L#BV421", "XCR1#BV510", "Ly6C#BV570", 
+                         "CD161#BV605", "Ly6G#BV650", "CD64#BV711", 
+                         "CD11c#BV750", "F4/80#BV786", "MHCII#FITC", 
+                         "CD69#BB700", "CD3e#PE", "CD11b#PE-CF594", 
+                         "CD19#PE-Cy5", "PD1#PE-Cy7", "CD63#AF647", 
+                         "CD44#RedFluor710", "LD#APC-eFluor780")
+
 channels_of_interest <- GetChannels(object = ff,
                                     markers = markers_of_interest, 
                                     exact = FALSE)
-
+channels_of_interest
 ```
 
 
 Plot two markers against each other in the traditional dot plot
 ```{r}
-plotDens(ff = ff, 
-         markers = c("CD3", "CD19"),
-         adjust = 200)
+plotScatter(ff_after = ff, 
+            channels = GetChannels(ff, c("CD3", "CD19"), exact = FALSE),
+            adjust = 200)
 ```
 
 ## Remove margins events
+### Remove margin events
 ```{r}
-ff_margins <- PeacoQC::RemoveMargins(ff, channels = channels_of_interest)
+ff_m <- PeacoQC::RemoveMargins(ff, channels = channels_of_interest)
 ```
 
-Plot Density
+### Visualize
 ```{r}
-plotDens(ff = ff_margins, 
-         original_ff = ff,
-         markers = c("FSC-A", "SSC-A"),
-         adjust = 200)
+plotScatter(ff_before = ff, 
+            ff_after = ff_m,
+            channels = GetChannels(ff, c("CD3", "CD19"), exact = FALSE),
+            adjust = 500)
 ```
 
 
-## Compensate the data with the spillover matrix acquired at the machine
+## Compensate the data with the spillover matrix that was exported fron FlowJo
 ```{r}
-comp <- ff@description$SPILL
+# Read in the compensation matrix
+# comp <- ff@description$SPILL # To use original spillover matrix
+comp <- read.csv("Data/1_raw/COMP240110_day1.csv", check.names = FALSE, row.names = 1)
 comp
-ff_c <- compensate(ff_margins, comp)
-```
 
+# Correct the row and column names if necessary
+colnames(comp) <- gsub(" ::.*", "", colnames(comp))
+rownames(comp) <- gsub(" ::.*", "", rownames(comp))
+comp
 
-```{r}
-plotDens(ff = ff_c, 
-         markers = c("CD3", "CD19"),
-         adjust = 200)
+# Compensate
+ff_c <- flowCore::compensate(ff_m, comp)
+
+plotScatter(ff_after = ff_c, 
+            channels = GetChannels(ff, c("CD3", "CD19"), exact = FALSE),
+            adjust = 200)
 ```
 
 
 ## Transform the data using an estimateLogicle on all files
 ```{r}
-# Add Live Death channel to transform data and remove SSC from channels of interest
-# since it needs its own transformation
-channels_to_transform <- c(channels_of_interest[-1], GetChannels(ff, "L/D", exact = FALSE))
+# Aggregate all the files of day one
+set.seed(2024) #Make sure that everyone ends up with the same thing
+agg <- FlowSOM::AggregateFlowFrames(grep("Day1", files, value = TRUE), 
+                                    cTotal = 1000000) 
 
-transformList <- estimateTransformation(files, channels_to_transform)
+# Perform all the preprocessing steps on the aggregate
+agg_m <- PeacoQC::RemoveMargins(agg, channels = channels_of_interest)
+agg_c <- compensate(agg_m, comp)
 
-ff_t <- transform(ff_c, transformList)
+# Calculate the estimateLogicle on the aggregate
+tf <- estimateLogicle(agg_c, colnames(comp)) # Non-scatter channels
+agg_t <- transform(agg_c, tf)
 
-#Special step to transform SSC-A
-reference_marker <- "PE-A"
-q5_goal <- quantile(exprs(ff_t)[,reference_marker], 0.05)
-q95_goal <- quantile(exprs(ff_t)[,reference_marker], 0.95)
-q5_SSCA <- quantile(exprs(ff_t)[,"SSC-A"], 0.05)
-q95_SSCA <- quantile(exprs(ff_t)[,"SSC-A"], 0.95)
-SSCA_a <- (q95_goal - q5_goal) / (q95_SSCA - q5_SSCA)
-SSCA_b <- q5_goal - q5_SSCA * (q95_goal - q5_goal) / (q95_SSCA - q5_SSCA)
-transformList <- c(transformList,
-                   transformList("SSC-A", flowCore::linearTransform(a = SSCA_a,
-b = SSCA_b)))
+# Add linear transform for scatters
+reference_marker <- "UV515-A"
+q5_goal <- quantile(exprs(agg_t)[,reference_marker], 0.05)
+q95_goal <- quantile(exprs(agg_t)[,reference_marker], 0.95)
+for(ch in c("FSC-A", "SSC-A", "FSC-H")){
+  q5 <- quantile(exprs(agg_t)[,ch], 0.05)
+  q95 <- quantile(exprs(agg_t)[,ch], 0.95)
+  a <- (q95_goal - q5_goal) / (q95 - q5)
+  b <- q5_goal - q5 * (q95_goal - q5_goal) / (q95 - q5)
+  tf <- c(tf,
+          transformList(ch, flowCore::linearTransform(a = a,
+                                                      b = b)))
+}
 
-ff_t <- transform(ff_c, transformList)
+# Transform
+ff_t <- transform(ff_c, tf)
 
-plotDens(ff = ff_t, markers = c("CD3", "CD19"), adjust = 1)
+plotScatter(ff_after = ff_t, 
+            channels = GetChannels(ff, c("CD3", "CD19"), exact = FALSE),
+            adjust = 1)
 ```
 
 ## Quality control
@@ -174,229 +236,505 @@ PeacoQC: https://doi.org/10.1002/cyto.a.24501
 ff_QC <- PeacoQC::PeacoQC(ff = ff_t, 
                           channels = channels_of_interest,
                           output_directory = dir_QC,
-                          plot = FALSE)
+                          plot = TRUE)
 
-plotDens(ff = ff_QC$FinalFF, original_ff = ff_t, markers = c("Time", "CD19"), adjust = 1)
+plotScatter(ff_after = ff_QC$FinalFF, 
+            ff_before = ff_t,
+            channels = GetChannels(ff, c("Time", "CD3"), exact = FALSE),
+            adjust = 1)
 ```
 
 ## Data filtering (can include removal of debris, doublets, dead cells, etc.)
 ```{r}
-ff_doublets <- PeacoQC::RemoveDoublets(ff_QC$FinalFF)
-plotDens(ff = ff_doublets, original_ff = ff_t, markers = c("FSC-A", "FSC-H"), adjust = 1)
-
+# Remove doublets
+ff_d <- PeacoQC::RemoveDoublets(ff_QC$FinalFF, nmad = 6)
+plotScatter(ff_after = ff_d, 
+            ff_before = ff_QC$FinalFF,
+            channels = c("FSC-A", "FSC-H"),
+            adjust = 1)
 
 # Remove dead cells
 live_gate <- flowCore::polygonGate(filterId = "Live", 
-                                   .gate = matrix(data = c(60000, 100000, 150000, 250000, 
-                                                           250000, 60000, 60000, 1.6, 1.9, 
-                                                           2.5, 2.5, -1.5, -1.5, 1.6), 
-                                                  ncol = 2, 
-                                                  dimnames = list(c(), c("FSC-A", "APC-Cy7-A"))))
-selected_live <- filter(ff_doublets, live_gate) 
-ff_l <- ff_doublets[selected_live@subSet,]
-plotDens(ff = ff_l, original_ff = ff_doublets, markers = c("FSC-A", "APC-Cy7-A"), adjust = 1)
+                                   "V810-A" = c( 0. , 4  ,4,3.5,2.2,0.  ),
+                                   "R780-A" = c(-0.5,-0.5,3,3  ,1.5,1.25))
+selected_live <- filter(ff_d, live_gate) 
+ff_l <- ff_d[selected_live@subSet,]
+
+plotScatter(ff_after = ff_l, 
+            ff_before = ff_d,
+            channels = GetChannels(ff, c("F4/80", "LD"), exact = FALSE),
+            adjust = 1)
+
+# Remove CD45- events
+CD45_gate <- estimateGate(ff_l, 
+                          marker_values = list("FSC-A" = c(min = 1, 
+                                                           range_min = 0.2),
+                                               "UV810-A" = c(min = 2.25,
+                                                             range_min = 0.5)))
+
+ff_CD45pos <- ff_l[CD45_gate,]
+
+
+plotScatter(ff_before = ff_l, 
+            ff_after = ff_CD45pos,
+            channels = GetChannels(ff, c("FSC-A", "CD45"), exact = FALSE))
 
 ```
 
 ## Preprocessing all files
+### Prepare varibales
+```{r}
+# Check files
+files
+
+# Compensation matrices for day 1 and day 2
+spill <- read.csv("Data/1_raw/COMP240110_day1.csv", check.names = FALSE, row.names = 1)
+spill_d2 <- read.csv("Data/1_raw/COMP240220_day2.csv", check.names = FALSE, row.names = 1)
+colnames(spill) <-  gsub(" ::.*", "", colnames(spill))
+rownames(spill) <-  gsub(" ::.*", "", rownames(spill))
+colnames(spill_d2) <-  gsub(" ::.*", "", colnames(spill_d2))
+rownames(spill_d2) <-  gsub(" ::.*", "", rownames(spill_d2))
+
+# We will reuse the same transformationList from previously
+names(tf@transforms)
+
+# We will use the same live gate from previously
+live_gate
+```
+
+
+### Preprocess in a loop
 ```{r}
 for (file in files){
   
   print(file)
   
   ff <- read.FCS(file)
-  ff_margins <- PeacoQC::RemoveMargins(ff, channels = channels_of_interest)
-  p1 <- plotDens(ff = ff_margins, 
-                 original_ff = ff, 
-                 markers = c("FSC-A", "SSC-A"),
-                 adjust = 200,
-                 title = "Remove margins") 
-  comp <- ff@description$SPILL
   
-  ff_c <- compensate(ff_margins, comp)
-  ff_t <- transform(ff_c, transformList)
-  ff_QC <- PeacoQC::PeacoQC(ff = ff_t, channels = channels_of_interest, 
-                            output_directory = dir_QC, plot = FALSE)
-  p2 <- plotDens(ff = ff_QC$FinalFF, 
-                 original_ff = ff_t,
-                 markers = c("Time", "CD19"), 
-                 adjust = 1,
-                 title = "Remove low quality events")
-  ff_doublets <- PeacoQC::RemoveDoublets(ff_QC$FinalFF)
-  p3 <- plotDens(ff = ff_doublets, 
-                 original_ff = ff_QC$FinalFF, 
-                 markers = c("FSC-A", "FSC-H"), 
-                 adjust = 1,
-                 title = "Remove doublets")
+  # Remove margins
+  ff_m <- PeacoQC::RemoveMargins(ff, channels = channels_of_interest)
 
-  selected_live <- filter(ff_doublets, live_gate) 
-  ff_l <- ff_doublets[selected_live@subSet,]
-  p4 <- plotDens(ff = ff_l, 
-                 original_ff = ff_doublets, 
-                 markers = c("FSC-A", "APC-Cy7-A"), 
-                 adjust = 1,
-                 title = "Remove dead cells")
+  # Compensate with the correct compensation matrix
+  if(startsWith(basename(file), "Day1")){
+    ff_c <- compensate(ff_m, spill)
+  } else {
+    ff_c <- compensate(ff_m, spill_d2)
+  }
 
-  png(paste0(dir_QC, sub(".fcs", ".png", basename(file))), height = 300, width = 1200)
-  print(ggarrange(p1,p2,p3,p4, nrow = 1))
-  dev.off()
+  # Transform
+  ff_t <- transform(ff_c, tf)
   
-  write.FCS(ff_l, file.path(dir_prepr, basename(file)))
+  # Quality control
+  ff_QC <- PeacoQC::PeacoQC(ff = ff_t, 
+                            channels = channels_of_interest, 
+                            output_directory = dir_QC, 
+                            save_fcs = FALSE)
+  ff_QC <- ff_QC$FinalFF
+  
+  # Data filtering
+  ff_d <- PeacoQC::RemoveDoublets(ff_QC, nmad = 6)
+
+  selected_live <- filter(ff_d, live_gate) 
+  ff_l <- ff_d[selected_live@subSet,]
+
+  CD45_gate <- estimateGate(ff_l, 
+                            marker_values = list("FSC-A" = c(min = 1, 
+                                                             range_min = 0.2),
+                                                 "UV810-A" = c(min = 2.25,
+                                                               range_min = 0.5)))
+
+  ff_CD45pos <- ff_l[CD45_gate,]
+  
+  # Save preprocessed fcs file
+  write.FCS(ff_CD45pos, file.path(dir_prepr, basename(file)))
+  
+  # Make an overview figure of all the different steps
+  preprocessing_plots <- list(filter_plot(ff, ff_m, "Non-margins", "FSC-A", "SSC-A"),
+                              filter_plot(ff_t, ff_QC, "Stable signal", "Time", "FSC-A"),
+                              filter_plot(ff_QC, ff_d, "Singlets", "FSC-A", "FSC-H"),
+                              filter_plot(ff_d, ff_l, "Live", "V810-A", "R780-A"),
+                              filter_plot(ff_l, ff_CD45pos, "CD45+", "FSC-A", "UV810-A"),
+                              filter_plot(ff_t, ff_CD45pos, "Final selection", "YG586-A", "YG670-A"))
+  ggsave(filename = file.path(dir_prepr, gsub(".fcs", "_preprocessing.png", basename(file))),
+         plot = ggpubr::ggarrange(plotlist = preprocessing_plots, nrow = 1),
+         width = 25, height = 5)
 }
 ```
 
-
 ## Exercise
-Plot CD64 against FcERI for Tube 5
+Plot Ly6G against Ly6C for the preprocessed sample 1
 ```{r}
+file <- "Data/2_preprocessed/Day1_WT_Sample1.fcs"
+ff <- read.FCS(file)
+
+plotScatter(ff_after = ff,
+            channels = GetChannels(ff, c("Ly6G", "Ly6C"), exact = FALSE))
 ```
 
-# Evaluate quality of the data
-## Plot the signal per channel and per file
+# Check for batch effects
+## List possible batches
 ```{r}
-files <- list.files(path = dir_prepr, pattern = ".fcs", full.names = TRUE)
-files
+files <- list.files(path = "Data/2_preprocessed", 
+                    full.names = TRUE, 
+                    pattern = "Day.*fcs")
 
-order <- order(sub(".*(Day.).*", "\\1", files)) #To reorder files according to batch
+batchLevels <- list("genotype" = sub(".*Day[1-2]_(..)_.*", "\\1", files),
+                    "day" = sub(".*/(Day[1-2])_.*", "\\1", files))
+batchLevels
+```
 
-files <- files[order]
-files
+## Markers and channels of interest
+```{r}
+ff <- read.FCS("Data/2_preprocessed/Day1_WT_Control1.fcs")
+markersOfInterest <- c("FSC-A", "SSC-A", "CD103", "CD4#", "CD8a", "CD86", 
+                       "CD62L", "XCR1", "Ly6C", "CD161", "Ly6G", 
+                       "CD64", "CD11c", "F4/80", "MHCII", "CD69", "CD3e", 
+                       "CD11b", "CD19", "PD1", "CD63", "CD44") #All markers except CD45 and LD
+channelsOfInterest <- FlowSOM::GetChannels(object = ff,
+                                           markers = markersOfInterest,
+                                           exact = FALSE)
+channelsOfInterest
+```
 
-day <- sub(".*(Day.).*", "\\1", files)
-day
+## Scatter and density plots
+```{r}
+scatterDir <- "Data/3_normalized/scatterPlots/"
+densityDir <- "Data/3_normalized/densityPlots/"
+UMAPDir <- "Data/3_normalized/UMAPPlots/"
+dir.create(scatterDir, recursive = TRUE)
+dir.create(densityDir)
+dir.create(UMAPDir)
 
-PlotFileScatters(input = files,
-                 channels = channels_of_interest,
-                 names = basename(files), legend = TRUE,
-                 groups = day, nrow = 2,
-                 plotFile = paste0(dir_QC, "file_scatters.png"))
+set.seed(2024)
+agg <- FlowSOM::AggregateFlowFrames(fileNames = files, 
+                                    cTotal = length(files)*500) 
+df <- data.frame(exprs(agg), check.names = FALSE)
+df$genotype <- batchLevels$genotype[df$File]
+df$day <- batchLevels$day[df$File]
+
+dimred <- umap::umap(df[,channelsOfInterest]) 
+df$UMAP1 <- dimred$layout[,1]
+df$UMAP2 <- dimred$layout[,2]
+
+for (level in names(batchLevels)){
+  # Scatter plots
+  FlowSOM::PlotFileScatters(input = files[order(batchLevels[[level]])],
+                            names = sub(".*/", "", files)[order(batchLevels[[level]])],
+                            groups = batchLevels[[level]][order(batchLevels[[level]])], 
+                            channels = channelsOfInterest,
+                            plotFile = paste0(scatterDir, "scatters_", level, ".png"), 
+                            ncol = 5)
+  
+  # Density plots
+  plotDens(input = df,
+           channels = channelsOfInterest,
+           level = level,
+           plotFile = paste0(densityDir, "densities_", level, ".pdf"))
+    
+  # Color UMAP plot
+  plotUMAP(input = df,
+           level = level,
+           plotFile = paste0(UMAPDir, "UMAP_", level, ".pdf"))
+}
 ```
 
 # Normalisation
-## Directories
+## Minmax normalization
+Most simple approach: align the min and max of all files individually.  
+x' = (x - min(x)) / (max(x) - min(x)) 
+
+- Upside: easy to understand  
+- Downside: often too simplistic, sensitive to outliers, file-approach might 
+remove biological variation 
+
+### Normalization
 ```{r}
-dir_norm <- "Data/Normalized"
-dir_MinMax <- "Data/Normalized/MinMax/"
-dir_quant <- "Data/Normalized/Quantile/"
-dir_CytoNorm <- "Data/Normalized/CytoNorm/"
-
-for (dir in c(dir_norm, dir_MinMax, dir_quant, dir_CytoNorm)){
-  dir.create(dir)
-}
-
-```
-
-## MinMax
-Most simple approach: nor
-x' = (x - min(x)) / (max(x) - min(x))
-- Upside: easy to understand
-- Downside: often too simplistic, sensitive to outliers, file-approach might remove biological variation
-```{r}
-files_prepr <- list.files(path = dir_prepr,
-                          pattern = ".fcs",
-                          full.names = TRUE)[order]
-
-for (file in files_prepr){
+dir.create("Data/3_normalized/minMax/files", recursive = TRUE)
+for (file in files){
   ff <- read.FCS(file)
-  for (channel in channels_of_interest){
+  for (channel in channelsOfInterest){
     min <- min(ff@exprs[,channel])
     max <- max(ff@exprs[,channel])
     ff@exprs[,channel] <- (ff@exprs[,channel] - min)/(max - min)
   }
-  write.FCS(ff, paste0(dir_MinMax, basename(file)))
+  write.FCS(ff, paste0("Data/3_normalized/minMax/files/", basename(file)))
 }
-
-PlotFileScatters(input = list.files(path = dir_MinMax,
-                                    pattern = ".fcs",
-                                    full.names = TRUE)[order],
-                 channels = channels_of_interest,
-                 names = basename(files), legend = TRUE,
-                 groups = day, nrow = 2,
-                 plotFile = paste0(dir_MinMax, "file_scatters.png"),
-                 silent = TRUE)
 ```
 
-## Quantile, batch approach
-Find the e.g. 0.01 and 0.99 quantiles of the first batch, compute the parameters to align the quantiles of the second batch to the first one and apply this to all batch 2 files.
-x' = (x - min(x)) / (max(x) - min(x))
-x' = goal_min + ((x- min(x)) * (goal_max - goal_min)) / (max(x) - min(x))
-- Upside: batch approach preserves biological variation, less sensitive to outliers
-- Downside: might still be too simplistic, cannot resolve population-specific batch effects
+### Evaluate the normalization quality
+#### Scatter and density plots
 ```{r}
-files_Day1 <- list.files(path = dir_prepr,
-                          pattern = "Day1.fcs",
-                          full.names = TRUE)
-files_Day2 <- list.files(path = dir_prepr,
-                          pattern = "Day2.fcs",
-                          full.names = TRUE)
-batch1 <- AggregateFlowFrames(fileNames = files_Day1, 
-                              cTotal = 100000,
-                              seed = 2022)
-batch2 <- AggregateFlowFrames(fileNames = files_Day2, 
-                              cTotal = 100000,
-                              seed = 2022)
+files_norm <- list.files("Data/3_normalized/minMax/files", pattern = ".fcs",
+                         full.names = TRUE)
 
-for (file in files_Day1){ # Copy day 1 files without normalizing
-  ff <- read.FCS(file)
-  write.FCS(ff, paste0(dir_quant, basename(file)))
+set.seed(2024)
+agg <- FlowSOM::AggregateFlowFrames(fileNames = files_norm, 
+                                    cTotal = length(files_norm)*500)
+df <- data.frame(exprs(agg), check.names = FALSE)
+df$genotype <- batchLevels$genotype[df$File]
+df$day <- batchLevels$day[df$File]
+
+dimred <- umap::umap(df[,channelsOfInterest]) 
+df$UMAP1 <- dimred$layout[,1]
+df$UMAP2 <- dimred$layout[,2]
+
+for (level in names(batchLevels)){
+  # Scatter plots
+  FlowSOM::PlotFileScatters(input = files_norm[order(batchLevels[[level]])],
+                            names = sub(".*/", "", files_norm)[order(batchLevels[[level]])],
+                            groups = batchLevels[[level]][order(batchLevels[[level]])], 
+                            channels = channelsOfInterest,
+                            plotFile = paste0(scatterDir, "scatters_", level, "_minMax.png"), ncol = 5)
+  
+  # Density plots
+  plotDens(input = df,
+           channels = channelsOfInterest,
+           level = level,
+           plotFile = paste0(densityDir, "densities_", level, "_minMax.pdf"))
+    
+  # Color UMAP plot
+  plotUMAP(input = df,
+           level = level,
+           plotFile = paste0(UMAPDir, "UMAP_", level, "_minMax.pdf"))
 }
-for (file in files_Day2){ # Quantile normalization for Day 2 files
+```
+
+## Quantile batch normalization
+Find the e.g. 0.01 and 0.99 quantiles of all files, calculate the medians, 
+compute the parameters to align the quantiles of the second batch to the first 
+one and apply this to all batch 2 files.  
+x' = goal_min + ((x- min(x)) * (goal_max - goal_min)) / (max(x) - min(x)) 
+
+- Upside: batch approach preserves biological variation, less sensitive to outliers 
+- Downside: might still be too simplistic, cannot resolve population-specific batch effects
+
+- Added with respect to previous approach:
+   - batch approach instead of single file approach
+   - 1st and 99th quantile instead of absolute min/max
+   
+### Normalization
+```{r}
+dir.create("Data/3_normalized/quantile/files", recursive = TRUE)
+files_Day1 <- files[grep("Day1", files)]
+files_Day2 <- files[grep("Day2", files)]
+
+# Make list of matrices to store quantiles
+quantiles <- list()
+for (channel in channelsOfInterest){
+  quantiles[[channel]] <- matrix(data = NA,
+                                 nrow = length(c(files_Day1, files_Day2)), 
+                                 ncol = 2,
+                                 dimnames = list(c(files_Day1, files_Day2),
+                                                 c("q01", "q99"))) 
+}
+
+# Loop over files to get quantiles
+for (file in c(files_Day1, files_Day2)){
   ff <- read.FCS(file)
-  for (channel in channels_of_interest){
-    batch1_q01 <- quantile(batch1@exprs[,channel], 0.01) # Calculate goal quantile
-    batch1_q99 <- quantile(batch1@exprs[,channel], 0.99)
-    batch2_q01 <- quantile(batch2@exprs[,channel], 0.01) # Calculate quantiles of whole day 2 batch
-    batch2_q99 <- quantile(batch2@exprs[,channel], 0.99)
+  for (channel in channelsOfInterest){
+    quantiles[[channel]][file,] <- c(quantile(ff@exprs[,channel], 0.01),
+                                     quantile(ff@exprs[,channel], 0.99))
+  }
+}
+
+# Normalize files
+## Copy day 1 files without normalizing
+for (file in files_Day1){ 
+  ff <- read.FCS(file)
+  write.FCS(ff, paste0("Data/3_normalized/quantile/files/", basename(file)))
+}
+
+## Quantile normalization for Day 2 files
+for (file in files_Day2){ 
+  ff <- read.FCS(file)
+  for (channel in channelsOfInterest){
+    batch1_q01 <- median(quantiles[[channel]][files_Day1, "q01"]) # Calculate goal quantile
+    batch1_q99 <- median(quantiles[[channel]][files_Day1, "q99"])
+    batch2_q01 <- median(quantiles[[channel]][files_Day2, "q01"]) # Calculate quantiles of whole day 2 batch
+    batch2_q99 <- median(quantiles[[channel]][files_Day2, "q99"])
     ff@exprs[,channel] <- batch1_q01 + ((ff@exprs[,channel]- batch2_q01) * (batch1_q99 - batch1_q01)) / (batch2_q99 - batch2_q01)
   }
-  write.FCS(ff, paste0(dir_quant, basename(file)))
+  write.FCS(ff, paste0("Data/3_normalized/quantile/files/", basename(file)))
 }
-
-PlotFileScatters(input = list.files(path = dir_quant,
-                                    pattern = ".fcs",
-                                    full.names = TRUE)[order],
-                 channels = channels_of_interest,
-                 names = basename(files), legend = TRUE,
-                 groups = day, nrow = 2,
-                 plotFile = paste0(dir_quant, "file_scatters.png"),
-                 silent = TRUE)
 ```
 
-## CytoNorm
-CytoNorm: https://doi.org/10.1002/cyto.a.23904
-Algorithm that first performs a clustering and computes splines to align cell populations, then this model can be used to normalize all files.
-- Upside: can resolve population-specific batch effects
-- Downside: cannot be used when size of batch effect is larger than size of biological difference (~ metaclustering)
+### Evaluate the normalization quality
+#### Scatter and density plots
 ```{r}
-# Train model
-model <- CytoNorm.train(files = c("Data/Preprocessed/Control_Day1.fcs",
-                                  "Data/Preprocessed/Control_Day2.fcs"),
-                        labels = c("Day1", "Day2"),
-                        channels = channels_of_interest,
-                        transformList = NULL,
-                        outputDir = dir_CytoNorm, 
-                        FlowSOM.params = list(xdim = 7, ydim = 7, nClus = 10), 
-                        seed = 2022)
+files_norm <- list.files("Data/3_normalized/quantile/files", pattern = ".fcs",
+                         full.names = TRUE)
 
-# Apply model
-CytoNorm.normalize(model = model,
-                   files = list.files(path = dir_prepr, 
-                                      full.names = TRUE, 
-                                      pattern = ".fcs")[order],
-                   labels = rep(c("Day1", "Day2"), each = 5),
-                   transformList = NULL,
-                   outputDir = dir_CytoNorm,
-                   prefix = "", 
-                   transformList.reverse = NULL)
+set.seed(2024)
+agg <- FlowSOM::AggregateFlowFrames(fileNames = files_norm, 
+                           cTotal = length(files_norm)*500)
+df <- data.frame(exprs(agg), check.names = FALSE)
+df$genotype <- batchLevels$genotype[df$File]
+df$day <- batchLevels$day[df$File]
 
-PlotFileScatters(input = list.files(path = dir_CytoNorm,
-                                    pattern = ".fcs",
-                                    full.names = TRUE)[order],
-                 channels = channels_of_interest,
-                 names = basename(files), legend = TRUE,
-                 groups = day, nrow = 2,
-                 plotFile = paste0(dir_CytoNorm, "file_scatters.png"),
-                 silent = TRUE)
+dimred <- umap::umap(df[,channelsOfInterest]) 
+df$UMAP1 <- dimred$layout[,1]
+df$UMAP2 <- dimred$layout[,2]
+
+for (level in names(batchLevels)){
+  # Scatter plots
+  FlowSOM::PlotFileScatters(input = files_norm[order(batchLevels[[level]])],
+                            names = sub(".*/", "", files_norm)[order(batchLevels[[level]])],
+                            groups = batchLevels[[level]][order(batchLevels[[level]])], 
+                            channels = channelsOfInterest,
+                            plotFile = paste0(scatterDir, "scatters_", level, "_quantile.png"), ncol = 5)
+  
+  # Density plots
+  plotDens(input = df,
+           channels = channelsOfInterest,
+           level = level,
+           plotFile = paste0(densityDir, "densities_", level, "_quantile.pdf"))
+    
+  # Color UMAP plot
+  plotUMAP(input = df,
+           level = level,
+           plotFile = paste0(UMAPDir, "UMAP_", level, "_quantile.pdf"))
+}
+```
+
+## Exercise
+Now try the normalization with the 2.5 and 97.5 quantiles.  
+```{r}
+
+```
+
+## CytoNorm normalization
+FlowSOM clustering followed by a spline normalization
+https://doi.org/10.1002/cyto.a.23904
+
+- Added with respect to previous approach:
+   - clustering before normalization
+   - 101 quantiles instead of 2 quantiles
+
+### Train model
+```{r}
+dir.create("Data/3_normalized/CytoNorm")
+
+# Specify channels for clustering
+markersToCluster <- c("FSC-A", "SSC-A", "CD4#", "CD8a", 
+                      "CD62L", "XCR1", "Ly6C", "CD161", "Ly6G", "CD64", 
+                      "CD11c", "F4/80", "MHCII", "CD3e", "CD11b", 
+                      "CD19", "CD63", "CD44") #Not all markers contribute to clustering
+channelsToCluster <- FlowSOM::GetChannels(object = ff,
+                                          markers = markersToCluster,
+                                          exact = FALSE)
+
+model <- CytoNorm::CytoNorm.train(files = c("Data/2_preprocessed/Day1_WT_Control1.fcs",
+                                            "Data/2_preprocessed/Day2_WT_Control1.fcs"), 
+                                  labels = c("Day1", "Day2"), 
+                                  channels = channelsOfInterest, seed = 2024, 
+                                  plot = TRUE, normParams = list("goal" = "Day1"), 
+                                  transformList = NULL,
+                                  FlowSOM.params = list(nCells = 200000, 
+                                                        nClus = 10, 
+                                                        channels = channelsToCluster),
+                                  outputDir = "Data/3_normalized/CytoNorm")
+saveRDS(model, "Data/3_normalized/CytoNorm/model.rds")
+```
+
+### Evaluate the CytoNorm assumption: check the CVs
+```{r}
+CVs <- CytoNorm::testCV(fsom = model$fsom,
+                        cluster_values = 5:15,
+                        plot = FALSE)
+
+pdf("Data/3_normalized/CytoNorm/CVs.pdf")
+CytoNorm::PlotOverviewCV(fsom = model$fsom, cv_res = CVs,
+                         show_cv = 1, max_cv = 1.5)
+dev.off()
+```
+
+### Apply model
+```{r}
+CytoNorm::CytoNorm.normalize(model = model,
+                             files = files,
+                             labels = sub(".*/(Day[1-2])_.*", "\\1", files),
+                             transformList = NULL,
+                             prefix = "",
+                             transformlist.reverse = NULL,
+                             transformList.reverse = NULL,
+                             outputDir = "Data/3_normalized/CytoNorm/files")
+```
+
+### Evaluate the normalization quality
+#### Density plots
+```{r}
+files_notnorm <- list.files("Data/2_preprocessed", pattern = "WT.*fcs", 
+                            full.names = TRUE)
+files_norm <- list.files("Data/3_normalized/CytoNorm/files", pattern = ".fcs",
+                         full.names = TRUE)
+# Show only control files
+p <- CytoNorm::plotDensities(input = list("Day1" = "Data/2_preprocessed/Day1_WT_Control1.fcs",
+                                          "Day2" = "Data/2_preprocessed/Day2_WT_Control1.fcs",
+                                          "Day1_norm" = "Data/3_normalized/CytoNorm/files/Day1_WT_Control1.fcs",
+                                          "Day2_norm" = "Data/3_normalized/CytoNorm/files/Day2_WT_Control1.fcs"),
+                             channels = channelsOfInterest)
+# Show all files
+p2 <- CytoNorm::plotDensities(input = list("Day1" = files_notnorm[startsWith(sub(".*/", "", files_notnorm), "Day1")],
+                                           "Day2" = files_notnorm[startsWith(sub(".*/", "", files_notnorm), "Day2")],
+                                           "Day1_norm" = files_norm[startsWith(sub(".*/", "", files_norm), "Day1")],
+                                           "Day2_norm" = files_norm[startsWith(sub(".*/", "", files_norm), "Day2")]),
+                              channels = channelsOfInterest)
+
+pdf("Data/3_normalized/CytoNorm/densities_control.pdf", height = 30, width = 5)
+ggarrange(ggarrange(plotlist = p[1:length(p)-1], 
+                    ncol = 2, 
+                    nrow = length(channelsOfInterest)),
+          p$legend, nrow = 2, heights = c(20,1))
+ggarrange(ggarrange(plotlist = p2[1:length(p2)-1], 
+                    ncol = 2, 
+                    nrow = length(channelsOfInterest)),
+          p2$legend, nrow = 2, heights = c(20,1))
+dev.off()
+```
+
+#### Spline plots
+```{r}
+pdf("Data/3_normalized/CytoNorm/splines.pdf", height = 20, width = 20)
+# Splines of all cluster in single plot
+CytoNorm::plotSplines(model = model, channels = channelsOfInterest[-c(1,2)], 
+            groupClusters = TRUE)
+# Single plot per spline
+CytoNorm::plotSplines(model = model, channels = channelsOfInterest[-c(1,2)])
+dev.off()
+```
+
+#### Scatter and density plots
+```{r}
+set.seed(2024)
+agg <- FlowSOM::AggregateFlowFrames(fileNames = files_norm, 
+                                    cTotal = length(files_norm)*500)
+df <- data.frame(exprs(agg), check.names = FALSE)
+df$genotype <- batchLevels$genotype[df$File]
+df$day <- batchLevels$day[df$File]
+
+dimred <- umap::umap(df[,channelsOfInterest]) 
+df$UMAP1 <- dimred$layout[,1]
+df$UMAP2 <- dimred$layout[,2]
+
+for (level in names(batchLevels)){
+  # Scatter plots
+  FlowSOM::PlotFileScatters(input = files_norm[order(batchLevels[[level]])],
+                            names = sub(".*/", "", files_norm)[order(batchLevels[[level]])],
+                            groups = batchLevels[[level]][order(batchLevels[[level]])], 
+                            channels = channelsOfInterest,
+                            plotFile = paste0(scatterDir, "scatters_", level, "_CytoNorm.png"), ncol = 5)
+  
+  # Density plots
+  plotDens(input = df,
+           channels = channelsOfInterest,
+           level = level,
+           plotFile = paste0(densityDir, "densities_", level, "_CytoNorm.pdf"))
+    
+  # Color UMAP plot
+  plotUMAP(input = df,
+           level = level,
+           plotFile = paste0(UMAPDir, "UMAP_", level, "_CytoNorm.pdf"))
+}
 ```
 
 # Make aggregate file
@@ -406,7 +744,7 @@ files <- list.files(path = dir_CytoNorm, #dir_prepr if no normalization was need
                     full.names = TRUE)[order]
 files
 
-set.seed(2022)
+set.seed(2024)
 agg <- AggregateFlowFrames(fileNames = files,
                            cTotal = 500000,
                            writeOutput = TRUE,
@@ -418,7 +756,7 @@ FlowSOM https://doi.org/10.1002/cyto.a.22625
 ```{r}
 fsom <- FlowSOM(input = agg,
                 colsToUse = channels_of_interest,
-                seed = 2022,
+                seed = 2024,
                 nClus = 10,
                 xdim = 10, ydim = 10)
 saveRDS(fsom, paste0(dir_RDS, "fsom.rds"))
