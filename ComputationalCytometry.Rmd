@@ -512,6 +512,8 @@ x' = goal_min + ((x- min(x)) * (goal_max - goal_min)) / (max(x) - min(x))
    - batch approach instead of single file approach
    - 1st and 99th quantile instead of absolute min/max
    
+The quantiles can be changed to 2.5 and 97.5 or any other value, depending on your data.
+
 ### Normalization
 ```{r}
 dir.create("Data/3_normalized/quantile/files", recursive = TRUE)
@@ -594,12 +596,6 @@ for (level in names(batchLevels)){
            level = level,
            plotFile = paste0(UMAPDir, "UMAP_", level, "_quantile.pdf"))
 }
-```
-
-## Exercise
-Now try the normalization with the 2.5 and 97.5 quantiles.  
-```{r}
-
 ```
 
 ## CytoNorm normalization
@@ -739,51 +735,89 @@ for (level in names(batchLevels)){
 
 # Make aggregate file
 ```{r}
-files <- list.files(path = dir_CytoNorm, #dir_prepr if no normalization was needed
-                    pattern = ".fcs",
-                    full.names = TRUE)[order]
+files <- list.files(path = "Data/3_normalized/CytoNorm/files", #dir_prepr if no normalization was needed
+                    pattern = "Day.*.fcs",
+                    full.names = TRUE)
 files
 
 set.seed(2024)
 agg <- AggregateFlowFrames(fileNames = files,
-                           cTotal = 500000,
+                           cTotal = length(files)*10000,
                            writeOutput = TRUE,
-                           outputFile = paste0(dir_CytoNorm, "aggregate.fcs"))
+                           outputFile = "Data/3_normalized/CytoNorm/files/aggregate.fcs")
 ```
 
 # Make FlowSOM model 
-FlowSOM https://doi.org/10.1002/cyto.a.22625
+
+Markers are divided into two distinct categories:
+- Lineage (type) markers:
+  + Their level of expression is assumed stable across cell populations
+  + They are used by FlowSOM to define the clustering of data
+- State (activation) markers:
+  + More transient than lineage, their expression levels can differ within populations
+  + They are not used in clustering, but their MFIs (median fluorescence intensity) *within* FlowSOM-generated meta-clusters can be analysed
+
+## Markers and channels of interest
 ```{r}
-fsom <- FlowSOM(input = agg,
-                colsToUse = channels_of_interest,
+ff <- read.FCS("Data/3_normalized/CytoNorm/files/Day1_WT_Control1.fcs")
+# Could be changed to reading in an Excel
+lineageMarkers <- c("FSC-A", "SSC-A", "CD4#", "CD8a", "CD62L", "XCR1", "Ly6C", 
+                    "CD161", "Ly6G", "CD64", "CD11c", "F4/80", "MHCII", "CD3e", 
+                    "CD11b", "CD19", "CD63", "CD44")
+stateMarkers <- c("CD103", "CD86", "CD69", "PD1")
+
+channelsForClustering <- GetChannels(object = ff,
+                                     markers = lineageMarkers,
+                                     exact = FALSE)
+channelsForMFI <- GetChannels(object = ff,
+                              markers = stateMarkers,
+                              exact = FALSE)
+markerInfo <- data.frame(
+  "Channel" = c(channelsForClustering, channelsForMFI),
+  "Marker"  = c(lineageMarkers, stateMarkers),
+  "Type"    = as.factor(c(
+    rep("type", times = length(channelsForClustering)),
+    rep("state", times = length(channelsForMFI))
+  ))
+)
+head(markerInfo)
+saveRDS(markerInfo, paste0(dir_RDS, "MarkerInfo.RDS"))
+```
+
+## Train the FlowSOM model
+```{r}
+fsom <- FlowSOM(input = agg, 
+                scale = FALSE,
+                colsToUse = channelsForClustering,
                 seed = 2024,
-                nClus = 10,
-                xdim = 10, ydim = 10)
-saveRDS(fsom, paste0(dir_RDS, "fsom.rds"))
+                nClus = 25,
+                xdim = 15, ydim = 15)
+
+saveRDS(fsom, "RDS/fsom.RDS")
 
 PlotStars(fsom = fsom,
+          maxNodeSize = 4,
           backgroundValues = fsom$metaclustering)
 ```
 
 # Test FlowSOM quality
 ## Make 2D scatter plots
 ```{r}
-channel_pairs = list(c("CD19", "SSC-A"),
-                     c("CD3", "CD161"),
-                     c("CD64", "CD49b"),
-                     c("CD11c", "MHCII"),
-                     c("Ly-6G", "CD11b"))
+channel_pairs = list(c("Ly6C", "CD11b"),
+                     c("CD19", "CD3e"),
+                     c("CD8a", "CD4"),
+                     c("CD11b", "XCR1"))
 
 Plot2DScatters(fsom = fsom,
                channelpairs = channel_pairs,
-               metaclusters = 1:10,
+               metaclusters = seq_len(NMetaclusters(fsom)),
                clusters = 1,
                plotFile = paste0(dir_results, "fsom_2D_scatters.png"))
 ```
 
 ## Check consistency with manual gating
 ```{r}
-manual <- readRDS("Data/Raw/ManualLabeling.rds")
+manual <- readRDS("Data/1_raw/ManualLabeling.rds")
 
 agg_labels <- rep(NA, nrow(agg))
 for (file_nr in unique(agg@exprs[,"File"])){
@@ -792,30 +826,46 @@ for (file_nr in unique(agg@exprs[,"File"])){
   agg_labels[row_ids] <- man[agg@exprs[,"Original_ID"][row_ids]]
 }
 
+# On the FlowSOM tree
 PlotPies(fsom = fsom,
          cellTypes = factor(agg_labels,
-                            levels = c("Unlabeled", "B cells", "T cells", "DCs", 
-                                       "NK cells","Neutrophils", "Macrophages", 
-                                       "NK T cells", "Basophils")))
-ggsave("Results/fsom_manual.pdf")
+                            levels = c("Unlabeled", "Neutrophils", "Monocytes", 
+                                       "B cells", "NK cells", "CD4 T cells", 
+                                       "CD8 T cells", "DCs")),
+        maxNodeSize = 3)
+
+ggsave(file.path(dir_results, "fsom_manualTree.pdf"))
+
+# In a bar plot
+pdf(file.path(dir_results, "fsom_manualBar.pdf"), width = 10)
+PlotManualBars(fsom = fsom,
+               manualVector = agg_labels, 
+               manualOrder = c("Unlabeled", "Neutrophils", "Monocytes", 
+                               "B cells", "NK cells", "CD4 T cells", 
+                               "CD8 T cells", "DCs"),
+               colors = c("#E5E5E5", "#070089", "#141EF5", "#4EACF8", 
+                          "#81FBC3", "#D8FE5D", "#F1A23A", "#EA3724"))
+dev.off()
 ```
 
 ## Calculate the purity of the FlowSOM clustering
 Returns the mean purity score, worst purity score and number of clusters with score <0.75
 ```{r}
+?Purity
 Purity(realClusters = agg_labels,
        predictedClusters = GetClusters(fsom))
 ```
 
 ## Inspect the file contribution per cluster
 ```{r}
-file_colors <- c("#6a040f", "#9d0208", "#d00000", "#dc2f02", "#e85d04", #Different shades within the groups
-                 "#03045e", "#023e8a", "#0077b6", "#0096c7", "#00b4d8") 
+file_colors <- c("#6a040f", "#9d0208", "#d00000", "#dc2f02", "#e85d04", "#F4AE82", #Different shades within the groups
+                 "#03045e", "#023e8a", "#0077b6", "#0096c7", "#00b4d8", "#80daec") 
 
 PlotPies(fsom = fsom,
          cellTypes = factor(basename(files)[fsom$data[,"File"]],
                            levels = basename(files)),
-         colorPalette = file_colors)
+         colorPalette = file_colors,
+         maxNodeSize = 3)
 ggsave(paste0(dir_results, "fsom_filecontribution.pdf"))
 ```
 
@@ -829,52 +879,70 @@ FlowSOMmary(fsom = fsom,
 ## Exercise
 Plot a FlowSOM tree with the nodes colored according to CD19 expression. Hint: check the PlotMarker function in the FlowSOM_Cheatsheet.
 ```{r}
-
+PlotMarker(fsom = fsom, marker = "CD19",
+           equalNodeSize = TRUE, maxNodeSize = 4)
 ```
 
 
 ## Look for nodes with a specific pattern
 ```{r}
-query <- list("B cells" = c("CD19" = "high", "CD3" = "low"),
+query <- list("B cells" = c("CD19" = "high", "CD3e" = "low"),
               "NK cells" = c("CD19" = "low", "CD161" = "high", 
                              "MHCII" = "low"),
-              "T cells" = c("CD3" = "high", "MHCII" = "low", "Ly-6G" = "low"),
-              "Macrophages" = c("CD64" = "high", "FcERI" = "high", 
-                                "MHCII" = "high", "CD49b" = "high", 
-                                "Ly-6G" = "low"),
+              "T cells" = c("CD3e" = "high", "MHCII" = "low", "Ly6G" = "low"),
               "Dendritic cells" = c("CD11c" = "high", "MHCII" = "high", 
-                                    "CD11b" = "high", "FcERI" = "low"),
-              "Neutrophils" = c("Ly-6G" = "high", "CD11b" = "high", 
-                                "CD3" = "low"))
+                                    "CD11b" = "high"),
+              "Neutrophils" = c("Ly6G" = "high", "CD11b" = "high", 
+                                "CD3e" = "low"))
 
 labels <- QueryMultiple(fsom = fsom,
                         cellTypes = query,
                         plotFile = paste0(dir_results, "fsom_QueryStarPlot.pdf"))
 
 PlotVariable(fsom = fsom,
-             variable = labels)
+             variable = labels,
+             maxNodeSize = 3)
 ggsave(paste0(dir_results, "fsom_query.pdf"))
 ```
 
 ## Exercise
-Annotate metaclusters
+Annotate the meta-clusters and plot the annotated FlowSOM tree
 ```{r}
-PlotManualBars(fsom = fsom,
-               manualVector = agg_labels)
-
 fsom_annotated <- UpdateMetaclusters(fsom,
-                                     newLabels = c("1" = "1: T cells",
-                                                   "2" = "2: ",
-                                                   "3" = "3: ",
-                                                   "4" = "4: ",
-                                                   "5" = "5: ",
-                                                   "6" = "6: ",
-                                                   "7" = "7: ",
-                                                   "8" = "8: ",
-                                                   "9" = "9: ",
-                                                   "10" = "10: "))
-```
+                                     newLabels = c("1" = "1: B cells",
+                                                   "2" = "2: Unlabeled",
+                                                   "3" = "3: DCs",
+                                                   "4" = "4: DCs",
+                                                   "5" = "5: Unlabeled",
+                                                   "6" = "6: Unlabeled",
+                                                   "7" = "7: DCs",
+                                                   "8" = "8: Unlabeled",
+                                                   "9" = "9: DCs",
+                                                   "10" = "10: Unlabeled",
+                                                   "11" = "11: Unlabeled",
+                                                   "12" = "12: Monocytes",
+                                                   "13" = "13: Monocytes",
+                                                   "14" = "14: Neutrophils",
+                                                   "15" = "15: Neutrophils",
+                                                   "16" = "16: Neutrophils",
+                                                   "17" = "17: DCs",
+                                                   "18" = "18: DCs",
+                                                   "19" = "19: NK cells",
+                                                   "20" = "20: CD8 T cells",
+                                                   "21" = "21: B cells",
+                                                   "22" = "22: CD8 T cells",
+                                                   "23" = "23: CD4 T cells",
+                                                   "24" = "24: Unlabeled",
+                                                   "25" = "25: CD8 T cells"))
 
+saveRDS(fsom_annotated, file.path(dir_RDS, "fsom_annotated.RDS"))
+
+PlotStars(fsom = fsom_annotated,
+          maxNodeSize = 4,
+          backgroundValues = fsom_annotated$metaclustering)
+
+#PlotDimRed(fsom_annotated, cTotal = 10000)
+```
 
 ## Get features per fcs file
 ```{r}
@@ -883,21 +951,37 @@ features <- GetFeatures(fsom = fsom_annotated,
                         filenames = basename(files),
                         level = c("clusters", "metaclusters"),
                         type = c("counts", "MFI", "percentages"),
-                        MFI = c("Ly-6G", "CD49b"))
+                        MFI = channelsForMFI)
 
+saveRDS(features, file.path(dir_RDS, "fsom_features.RDS"))
 names(features)
 ```
 
 ## Visualize features
+### Abundance boxplots
 ```{r}
-df <- data.frame(features$metacluster_percentages[c(2:5, 7:10),]*100, 
+df <- data.frame(features$metacluster_percentages[grep("Sample", rownames(features$metacluster_percentages)),]*100, 
                  check.names = FALSE)
-df$Group <- factor(x = c("WT", "WT", "KO", "KO",
-                         "WT", "WT", "KO", "KO"))
+df$Group <- meta$Genotype[match(rownames(df), meta$FileName)]
 df_g <- gather(df, "Feature", "Percentage", -Group)
 df_g$Feature <- factor(x = df_g$Feature)
 ggplot(data = df_g, aes(x=Group, y=Percentage))+
   geom_boxplot() +
+  geom_point(aes(color=Group)) +
+  facet_wrap(~Feature, scales = "free") +
+  theme_minimal()
+```
+
+### MFI violin plots
+```{r}
+df <- data.frame(features$metacluster_MFIs[grep("Sample", rownames(features$metacluster_MFIs)),
+                                           grep("CD103", colnames(features$metacluster_MFIs))]*100, 
+                 check.names = FALSE)
+df$Group <- meta$Genotype[match(rownames(df), meta$FileName)]
+df_g <- gather(df, "Feature", "MFI", -Group)
+df_g$Feature <- factor(x = df_g$Feature)
+ggplot(data = df_g, aes(x=Group, y=MFI))+
+  geom_boxplot() + 
   geom_point(aes(color=Group)) +
   facet_wrap(~Feature, scales = "free") +
   theme_minimal()
