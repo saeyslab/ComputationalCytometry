@@ -108,7 +108,9 @@ ff@description$SPILL
 - Find the number of cells in the file
 - Find the acquisition date
 ```{r}
+ff@description$`$DATE`
 
+nrow(exprs(ff))
 ```
 
 
@@ -364,7 +366,11 @@ for (file in files){
 ## Exercise
 Plot Ly6G against Ly6C for the preprocessed sample 1
 ```{r}
+file <- "Data/2_preprocessed/Day1_WT_Sample1.fcs"
+ff <- read.FCS(file)
 
+plotScatter(ff_after = ff,
+            channels = GetChannels(ff, c("Ly6G", "Ly6C"), exact = FALSE))
 ```
 
 # Check for batch effects
@@ -875,7 +881,8 @@ FlowSOMmary(fsom = fsom,
 ## Exercise
 Plot a FlowSOM tree with the nodes colored according to CD19 expression. Hint: check the PlotMarker function in the FlowSOM_Cheatsheet.
 ```{r}
-
+PlotMarker(fsom = fsom, marker = "CD19",
+           equalNodeSize = TRUE, maxNodeSize = 4)
 ```
 
 
@@ -905,34 +912,36 @@ Annotate the meta-clusters and plot the annotated FlowSOM tree
 ```{r}
 fsom_annotated <- UpdateMetaclusters(fsom,
                                      newLabels = c("1" = "1: B cells",
-                                                   "2" = "2: ",
-                                                   "3" = "3: ",
-                                                   "4" = "4: ",
-                                                   "5" = "5: ",
-                                                   "6" = "6: ",
-                                                   "7" = "7: ",
-                                                   "8" = "8: ",
-                                                   "9" = "9: ",
-                                                   "10" = "10: ",
-                                                   "11" = "11: ",
-                                                   "12" = "12: ",
-                                                   "13" = "13: ",
-                                                   "14" = "14: ",
-                                                   "15" = "15: ",
-                                                   "16" = "16: ",
-                                                   "17" = "17: ",
-                                                   "18" = "18: ",
-                                                   "19" = "19: ",
-                                                   "20" = "20: ",
-                                                   "21" = "21: ",
-                                                   "22" = "22: ",
-                                                   "23" = "23: ",
-                                                   "24" = "24: ",
-                                                   "25" = "25: "))
+                                                   "2" = "2: Unlabeled",
+                                                   "3" = "3: DCs",
+                                                   "4" = "4: DCs",
+                                                   "5" = "5: Unlabeled",
+                                                   "6" = "6: Unlabeled",
+                                                   "7" = "7: DCs",
+                                                   "8" = "8: Unlabeled",
+                                                   "9" = "9: DCs",
+                                                   "10" = "10: Unlabeled",
+                                                   "11" = "11: Unlabeled",
+                                                   "12" = "12: Monocytes",
+                                                   "13" = "13: Monocytes",
+                                                   "14" = "14: Neutrophils",
+                                                   "15" = "15: Neutrophils",
+                                                   "16" = "16: Neutrophils",
+                                                   "17" = "17: DCs",
+                                                   "18" = "18: DCs",
+                                                   "19" = "19: NK cells",
+                                                   "20" = "20: CD8 T cells",
+                                                   "21" = "21: B cells",
+                                                   "22" = "22: CD8 T cells",
+                                                   "23" = "23: CD4 T cells",
+                                                   "24" = "24: Unlabeled",
+                                                   "25" = "25: CD8 T cells"))
 
 saveRDS(fsom_annotated, file.path(dir_RDS, "fsom_annotated.RDS"))
 
-PlotStars()
+PlotStars(fsom = fsom_annotated,
+          maxNodeSize = 4,
+          backgroundValues = fsom_annotated$metaclustering)
 
 #PlotDimRed(fsom_annotated, cTotal = 10000)
 ```
