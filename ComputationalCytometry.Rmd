@@ -883,8 +883,11 @@ Plot a FlowSOM tree with the nodes colored according to CD19 expression. Hint: c
 ```{r}
 query <- list("B cells" = c("CD19" = "high", "CD3e" = "low"),
               "NK cells" = c("CD19" = "low", "CD161" = "high", 
-                             "MHCII" = "low"),
-              "T cells" = c("CD3e" = "high", "MHCII" = "low", "Ly6G" = "low"),
+                             "MHCII" = "low", "CD3e" = "low"),
+              "CD4+ T cells" = c("CD3e" = "high", "MHCII" = "low", 
+                                 "Ly6G" = "low", "CD4" = "high"),
+              "CD8+ T cells" = c("CD3e" = "high", "MHCII" = "low", 
+                                 "Ly6G" = "low", "CD8a" = "high"),
               "Dendritic cells" = c("CD11c" = "high", "MHCII" = "high", 
                                     "CD11b" = "high"),
               "Neutrophils" = c("Ly6G" = "high", "CD11b" = "high", 
@@ -960,22 +963,22 @@ df_g <- gather(df, "Feature", "Percentage", -Group)
 df_g$Feature <- factor(x = df_g$Feature)
 ggplot(data = df_g, aes(x=Group, y=Percentage))+
   geom_boxplot() +
-  geom_point(aes(color=Group)) +
+  geom_jitter(aes(color=Group)) +
   facet_wrap(~Feature, scales = "free") +
   theme_minimal()
 ```
 
-### MFI violin plots
+### MFI boxplots
 ```{r}
 df <- data.frame(features$metacluster_MFIs[grep("Sample", rownames(features$metacluster_MFIs)),
-                                           grep("CD103", colnames(features$metacluster_MFIs))]*100, 
+                                           grep("CD103", colnames(features$metacluster_MFIs))], 
                  check.names = FALSE)
 df$Group <- meta$Genotype[match(rownames(df), meta$FileName)]
 df_g <- gather(df, "Feature", "MFI", -Group)
 df_g$Feature <- factor(x = df_g$Feature)
 ggplot(data = df_g, aes(x=Group, y=MFI))+
   geom_boxplot() + 
-  geom_point(aes(color=Group)) +
+  geom_jitter(aes(color=Group)) +
   facet_wrap(~Feature, scales = "free") +
   theme_minimal()
 ```
