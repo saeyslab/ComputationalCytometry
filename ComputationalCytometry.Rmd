@@ -732,7 +732,7 @@ for (level in names(batchLevels)){
 # Make aggregate file
 ```{r}
 files <- list.files(path = "Data/3_normalized/CytoNorm/files", #dir_prepr if no normalization was needed
-                    pattern = "Day.*.fcs",
+                    pattern = "Day.*Sample.*.fcs",
                     full.names = TRUE)
 files
 
