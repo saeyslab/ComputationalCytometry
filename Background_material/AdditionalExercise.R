@@ -51,20 +51,22 @@ for (file in files){
                             plot = TRUE,
                             save_fcs = TRUE,
                             remove_zeros = TRUE)
-  p1 <- plotDens(ff = ff_QC$FinalFF,
-                 original_ff = ff_t,
-                 markers = c("Time", "CCR7"),
-                 adjust = 1,
-                 title = "Remove low quality events")
+  p1 <- plotScatter(ff_after = ff_QC$FinalFF, 
+                    ff_before = ff_t,
+                    channels = GetChannels(ff, c("Time", "CCR7"), exact = FALSE),
+                    adjust = 1,
+                    title = "Remove low quality events")
+  
 
   m <- manual[[basename(file)]]$matrix[exprs(ff_QC$FinalFF)[,"Original_ID"],]
   ff_subset <- ff_QC$FinalFF[m[,"CD45+CD66-"],]
 
-  p2 <- plotDens(ff = ff_subset,
-                 original_ff = ff_QC$FinalFF,
-                 markers = c("CD45", "CD66"),
-                 adjust = 1,
-                 title = "Select CD45 cells")
+  p2 <- plotScatter(ff_after = ff_subset, 
+                    ff_before = ff_QC$FinalFF,
+                    channels = GetChannels(ff, c("CD45", "CD66"), exact = FALSE),
+                    adjust = 1,
+                    title = "Select CD45 cells")
+  
 
   png(paste0(dir_QC, sub(".fcs", ".png", basename(file))), height = 300, width = 600)
   print(ggarrange(p1,p2, nrow = 1))

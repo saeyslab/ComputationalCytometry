@@ -647,7 +647,6 @@ CytoNorm::CytoNorm.normalize(model = model,
                              labels = sub(".*/(Day[1-2])_.*", "\\1", files),
                              transformList = NULL,
                              prefix = "",
-                             transformlist.reverse = NULL,
                              transformList.reverse = NULL,
                              outputDir = "Data/3_normalized/CytoNorm/files")
 ```
